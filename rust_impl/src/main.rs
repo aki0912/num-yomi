@@ -16,10 +16,21 @@ type TokenBuf = SmallVec<[Token; 16]>;
 const DECIMAL_POINT_TOKEN: Token = "てん";
 
 #[derive(Clone, Copy)]
+struct CounterPrefixDef {
+    marker: &'static str,
+    reading: Tokens,
+}
+
+#[derive(Clone, Copy)]
 struct CounterPostfixDef {
     marker: &'static str,
     reading: Tokens,
 }
+
+const COUNTER_PREFIXES: &[CounterPrefixDef] = &[CounterPrefixDef {
+    marker: "第",
+    reading: &["だい"],
+}];
 
 const COUNTER_POSTFIXES: &[CounterPostfixDef] = &[
     CounterPostfixDef {
@@ -321,6 +332,12 @@ fn runtime_rules() -> &'static RuntimeRules {
 struct CounterMatch<'a> {
     counter: &'static CounterDef,
     number_part: &'a str,
+}
+
+#[derive(Clone, Copy)]
+struct CounterPrefixMatch {
+    marker: &'static str,
+    reading: Tokens,
 }
 
 #[derive(Clone, Copy)]
@@ -629,14 +646,22 @@ fn read_with_options(
     rules: &RuntimeRules,
 ) -> Result<Option<String>, String> {
     let normalized = normalize_input(input);
+    let mut prefix: Option<CounterPrefixMatch> = None;
     let mut postfix: Option<CounterPostfixMatch> = None;
     let mut counter_input = normalized.as_str();
-    let mut detected = detect_counter(counter_input, rules);
+    let mut detected = detect_counter_with_parsable_number(counter_input, rules);
     if detected.is_none() {
-        postfix = detect_counter_postfix(&normalized);
+        prefix = detect_counter_prefix(counter_input);
+        if let Some(matched_prefix) = prefix {
+            counter_input = &counter_input[matched_prefix.marker.len()..];
+            detected = detect_counter_with_parsable_number(counter_input, rules);
+        }
+    }
+    if detected.is_none() {
+        postfix = detect_counter_postfix(counter_input);
         if let Some(matched_postfix) = postfix {
-            counter_input = &normalized[..normalized.len() - matched_postfix.marker.len()];
-            detected = detect_counter(counter_input, rules);
+            counter_input = &counter_input[..counter_input.len() - matched_postfix.marker.len()];
+            detected = detect_counter_with_parsable_number(counter_input, rules);
         }
     }
 
@@ -661,7 +686,7 @@ fn read_with_options(
             base_tokens
         };
 
-        let final_tokens = append_counter_postfix(final_tokens, postfix);
+        let final_tokens = prepend_counter_prefix(append_counter_postfix(final_tokens, postfix), prefix);
         return Ok(Some(join_tokens(&final_tokens)));
     }
 
@@ -680,7 +705,7 @@ fn read_with_options(
         base_tokens
     };
 
-    let final_tokens = append_counter_postfix(final_tokens, postfix);
+    let final_tokens = prepend_counter_prefix(append_counter_postfix(final_tokens, postfix), prefix);
     Ok(Some(join_tokens(&final_tokens)))
 }
 
@@ -733,6 +758,40 @@ fn detect_counter<'a>(input: &'a str, rules: &RuntimeRules) -> Option<CounterMat
     None
 }
 
+fn has_parsable_number_text(input: &str) -> bool {
+    parse_decimal(input).is_some() || parse_number(input).is_some()
+}
+
+fn detect_counter_with_parsable_number<'a>(
+    input: &'a str,
+    rules: &RuntimeRules,
+) -> Option<CounterMatch<'a>> {
+    let detected = detect_counter(input, rules)?;
+    if !has_parsable_number_text(detected.number_part) {
+        return None;
+    }
+    Some(detected)
+}
+
+fn detect_counter_prefix(input: &str) -> Option<CounterPrefixMatch> {
+    let mut best: Option<CounterPrefixMatch> = None;
+    for prefix in COUNTER_PREFIXES {
+        if !input.starts_with(prefix.marker) {
+            continue;
+        }
+        let matched = CounterPrefixMatch {
+            marker: prefix.marker,
+            reading: prefix.reading,
+        };
+        match best {
+            None => best = Some(matched),
+            Some(current) if matched.marker.len() > current.marker.len() => best = Some(matched),
+            _ => {}
+        }
+    }
+    best
+}
+
 fn detect_counter_postfix(input: &str) -> Option<CounterPostfixMatch> {
     let mut best: Option<CounterPostfixMatch> = None;
     for postfix in COUNTER_POSTFIXES {
@@ -750,6 +809,16 @@ fn detect_counter_postfix(input: &str) -> Option<CounterPostfixMatch> {
         }
     }
     best
+}
+
+fn prepend_counter_prefix(tokens: TokenBuf, prefix: Option<CounterPrefixMatch>) -> TokenBuf {
+    if let Some(prefix) = prefix {
+        let mut merged: TokenBuf = SmallVec::with_capacity(prefix.reading.len() + tokens.len());
+        merged.extend_from_slice(prefix.reading);
+        merged.extend(tokens);
+        return merged;
+    }
+    tokens
 }
 
 fn append_counter_postfix(mut tokens: TokenBuf, postfix: Option<CounterPostfixMatch>) -> TokenBuf {

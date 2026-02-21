@@ -41,6 +41,7 @@ BIG_UNITS: Dict[str, int] = {
 }
 
 DECIMAL_POINT_TOKEN = "てん"
+COUNTER_PREFIXES: List[Tuple[str, List[str]]] = [("第", ["だい"])]
 COUNTER_POSTFIXES: List[Tuple[str, List[str]]] = [("目", ["め"]), ("め", ["め"])]
 
 __all__ = [
@@ -140,6 +141,33 @@ def detect_counter_postfix(input_text: str) -> Optional[Tuple[str, List[str]]]:
         if best is None or len(marker) > len(best[0]):
             best = (marker, reading)
     return best
+
+
+def detect_counter_prefix(input_text: str) -> Optional[Tuple[str, List[str]]]:
+    best: Optional[Tuple[str, List[str]]] = None
+    for marker, reading in COUNTER_PREFIXES:
+        if not input_text.startswith(marker):
+            continue
+        if best is None or len(marker) > len(best[0]):
+            best = (marker, reading)
+    return best
+
+
+def has_parsable_number_text(input_text: str) -> bool:
+    return parse_decimal(input_text) is not None or parse_number(input_text) is not None
+
+
+def detect_counter_with_parsable_number(
+    input_text: str,
+    prefixes_by_head: Dict[str, List[Tuple[str, str]]],
+    suffixes_by_tail: Dict[str, List[Tuple[str, str]]],
+) -> Optional[Dict[str, str]]:
+    detected = detect_counter(input_text, prefixes_by_head, suffixes_by_tail)
+    if detected is None:
+        return None
+    if not has_parsable_number_text(detected["numberPart"]):
+        return None
+    return detected
 
 
 def parse_kansuji(input_text: str) -> Optional[int]:
@@ -521,14 +549,24 @@ class YomiJaPy:
 
     def read_detailed(self, input_text: str, options: Optional[Dict[str, Any]] = None) -> Optional[Dict[str, Any]]:
         normalized = normalize_input(input_text)
+        prefix = None
         postfix = None
         counter_input = normalized
-        detected = detect_counter(normalized, self.prefixes_by_head, self.suffixes_by_tail)
+        detected = detect_counter_with_parsable_number(normalized, self.prefixes_by_head, self.suffixes_by_tail)
         if detected is None:
-            postfix = detect_counter_postfix(normalized)
+            prefix = detect_counter_prefix(normalized)
+            if prefix:
+                counter_input = normalized[len(prefix[0]):]
+                detected = detect_counter_with_parsable_number(
+                    counter_input, self.prefixes_by_head, self.suffixes_by_tail
+                )
+        if detected is None:
+            postfix = detect_counter_postfix(counter_input)
             if postfix:
-                counter_input = normalized[: len(normalized) - len(postfix[0])]
-                detected = detect_counter(counter_input, self.prefixes_by_head, self.suffixes_by_tail)
+                counter_input = counter_input[: len(counter_input) - len(postfix[0])]
+                detected = detect_counter_with_parsable_number(
+                    counter_input, self.prefixes_by_head, self.suffixes_by_tail
+                )
         number_text = detected["numberPart"] if detected else counter_input
         strict = bool(options.get("strict")) if isinstance(options, dict) else False
 
@@ -563,6 +601,8 @@ class YomiJaPy:
 
             if postfix:
                 tokens = list(tokens) + list(postfix[1])
+            if prefix:
+                tokens = list(prefix[1]) + list(tokens)
 
             return {
                 "input": input_text,
@@ -599,6 +639,8 @@ class YomiJaPy:
 
         if postfix:
             tokens = list(tokens) + list(postfix[1])
+        if prefix:
+            tokens = list(prefix[1]) + list(tokens)
 
         return {
             "input": input_text,
