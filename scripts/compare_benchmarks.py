@@ -97,12 +97,54 @@ def main() -> None:
         action="store_true",
         help="Use library-call benchmark runners instead of CLI runners",
     )
+    parser.add_argument(
+        "--replace-style",
+        action="store_true",
+        help="Use replace-in-text benchmark runners",
+    )
     args = parser.parse_args()
 
     cases_path = str(Path(args.cases).resolve())
     iterations = str(args.iterations)
 
-    if args.call_style:
+    if args.replace_style:
+        if not args.call_style:
+            raise RuntimeError("--replace-style currently requires --call-style")
+
+        node_cmd = [
+            "node",
+            "bench/bench_node_replace_call.mjs",
+            "--cases",
+            cases_path,
+            "--iterations",
+            iterations,
+        ]
+
+        py_cmd = [
+            "python3",
+            "bench/bench_python_replace_call.py",
+            "--cases",
+            cases_path,
+            "--iterations",
+            iterations,
+        ]
+
+        rust_cmd = [
+            "cargo",
+            "run",
+            "--quiet",
+            "--release",
+            "--manifest-path",
+            "rust_impl/Cargo.toml",
+            "--bin",
+            "bench_replace_call",
+            "--",
+            "--cases",
+            cases_path,
+            "--iterations",
+            iterations,
+        ]
+    elif args.call_style:
         node_cmd = [
             "node",
             "bench/bench_node_call.mjs",

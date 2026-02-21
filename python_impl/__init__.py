@@ -6,6 +6,7 @@ from .yomi import (
     read,
     read_detailed,
     read_number,
+    replace_in_text,
     run_benchmark,
 )
 
@@ -17,5 +18,6 @@ __all__ = [
     "read",
     "read_detailed",
     "read_number",
+    "replace_in_text",
     "run_benchmark",
 ]
