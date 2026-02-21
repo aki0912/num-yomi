@@ -1,0 +1,23 @@
+{
+  "name": "japanese-number-reading",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "dist/index.js",
+  "bin": {
+    "yomi": "dist/cli/yomi.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/cli/yomi.js",
+    "test": "node scripts/run-cases.js"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {},
+  "devDependencies": {
+    "typescript": "^5.6.3",
+    "@types/node": "^22.10.2"
+  }
+}

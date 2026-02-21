@@ -1,0 +1,122 @@
+{
+  "counters": {
+    "yen": {
+      "surface": {
+        "prefix": ["¥", "￥"],
+        "suffix": ["円"]
+      },
+      "compose": {
+        "type": "concat",
+        "suffixReading": ["えん"]
+      }
+    },
+    "hon": {
+      "surface": {
+        "suffix": ["本"]
+      },
+      "compose": {
+        "type": "pattern",
+        "patternId": "h_row_3forms",
+        "forms": {
+          "h": ["ほん"],
+          "b": ["ぼん"],
+          "p": ["ぽん"]
+        }
+      }
+    },
+    "hiki": {
+      "surface": {
+        "suffix": ["匹"]
+      },
+      "compose": {
+        "type": "pattern",
+        "patternId": "h_row_3forms",
+        "forms": {
+          "h": ["ひき"],
+          "b": ["びき"],
+          "p": ["ぴき"]
+        }
+      }
+    },
+    "tsu": {
+      "surface": {
+        "suffix": ["つ"]
+      },
+      "compose": {
+        "type": "exceptions_first",
+        "exceptions": {
+          "1": ["ひとつ"],
+          "2": ["ふたつ"],
+          "3": ["みっつ"],
+          "4": ["よっつ"],
+          "5": ["いつつ"],
+          "6": ["むっつ"],
+          "7": ["ななつ"],
+          "8": ["やっつ"],
+          "9": ["ここのつ"],
+          "10": ["とお"]
+        },
+        "fallback": {
+          "type": "concat",
+          "suffixReading": ["つ"]
+        }
+      }
+    },
+    "day": {
+      "surface": {
+        "suffix": ["日"]
+      },
+      "defaultMode": "date",
+      "modes": {
+        "date": {
+          "compose": {
+            "type": "exceptions_first",
+            "exceptions": {
+              "1": ["ついたち"],
+              "2": ["ふつか"],
+              "3": ["みっか"],
+              "4": ["よっか"],
+              "5": ["いつか"],
+              "6": ["むいか"],
+              "7": ["なのか"],
+              "8": ["ようか"],
+              "9": ["ここのか"],
+              "10": ["とおか"],
+              "14": ["じゅう", "よっ", "か"],
+              "20": ["はつか"],
+              "24": ["に", "じゅう", "よっ", "か"]
+            },
+            "fallback": {
+              "type": "concat",
+              "suffixReading": ["にち"]
+            }
+          }
+        },
+        "duration": {
+          "compose": {
+            "type": "exceptions_first",
+            "exceptions": {
+              "1": ["いち", "にち"],
+              "2": ["ふつか"],
+              "3": ["みっか"],
+              "4": ["よっか"],
+              "5": ["いつか"],
+              "6": ["むいか"],
+              "7": ["なのか"],
+              "8": ["ようか"],
+              "9": ["ここのか"],
+              "10": ["とおか"],
+              "14": ["じゅう", "よっ", "か"],
+              "20": ["はつか"],
+              "24": ["に", "じゅう", "よっ", "か"]
+            },
+            "fallback": {
+              "type": "concat",
+              "suffixReading": ["にち"]
+            }
+          }
+        }
+      }
+    }
+  }
+}
