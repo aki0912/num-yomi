@@ -188,6 +188,49 @@ const e = yomiJa.readNumber(5000n);
 pnpm test
 ```
 
+## Python / Rust 実装
+
+同じルールファイル（`rules/ja/*.json`）を読む実装を用意しています。
+
+- Python: `python_impl/yomi.py`
+- Rust: `rust_impl/src/main.rs`
+
+Rust 実装は `build.rs` で `rules/ja/*.json` をビルド時に構造体定数へ変換します。
+実行時に JSON をパースせず、生成済みルールを直接参照します。
+
+単発実行例:
+
+```bash
+python3 python_impl/yomi.py read \"300円\"
+cargo run --manifest-path rust_impl/Cargo.toml -- read \"300円\"
+```
+
+## 処理時間比較（Node / Python / Rust）
+
+同一の `test/cases.json` を使い、各テストケースごとに平均処理時間（ns）を比較できます。
+
+```bash
+# TypeScript 実装を最新化
+pnpm build
+
+# 比較実行（ケースごとの表を出力）
+pnpm bench:compare
+```
+
+反復回数を変更する例:
+
+```bash
+python3 scripts/compare_benchmarks.py --cases test/cases.json --iterations 5000
+```
+
+個別ベンチ:
+
+```bash
+pnpm bench:node
+pnpm bench:python
+pnpm bench:rust
+```
+
 ## ライセンス
 
 MIT

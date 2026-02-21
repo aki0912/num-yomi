@@ -1,0 +1,15 @@
+[package]
+name = "yomi_rust"
+version = "0.1.0"
+edition = "2021"
+build = "build.rs"
+
+[dependencies]
+num-bigint = "0.4"
+num-traits = "0.2"
+serde_json = "1.0"
+unicode-normalization = "0.1"
+smallvec = "1.13"
+
+[build-dependencies]
+serde_json = "1.0"

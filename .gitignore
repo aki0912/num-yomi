@@ -20,6 +20,13 @@ yarn-error.log*
 # TypeScript
 *.tsbuildinfo
 
+# Python
+__pycache__/
+*.pyc
+
+# Rust
+rust_impl/target/
+
 # Editor / IDE
 .idea/
 .vscode/

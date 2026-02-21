@@ -1,4 +1,4 @@
-import type { ReadOptions, ReadResult, YomiJa, VariantConfig } from "./rules/types.js";
+import type { ReadOptions, ReadResult, YomiJa } from "./rules/types.js";
 import { normalizeInput } from "./core/normalize.js";
 import { parseNumber } from "./core/parseNumber.js";
 import { readNumberTokens } from "./core/readNumberTokens.js";
@@ -8,15 +8,6 @@ import { applyCounter } from "./counters/apply.js";
 import { loadRules } from "./rules/load.js";
 
 const defaultRules = loadRules();
-
-function resolveVariant(variant: VariantConfig | undefined) {
-  return {
-    zero: variant?.zero,
-    four: variant?.four,
-    seven: variant?.seven,
-    nine: variant?.nine,
-  } satisfies VariantConfig;
-}
 
 function toReading(input: string, options?: ReadOptions) {
   const normalized = normalizeInput(input);
@@ -31,7 +22,7 @@ function toReading(input: string, options?: ReadOptions) {
     return null;
   }
 
-  const baseTokens = readNumberTokens(numberValue, defaultRules.core, resolveVariant(options?.variant));
+  const baseTokens = readNumberTokens(numberValue, defaultRules.core, options?.variant);
   const applied = detected
     ? applyCounter(
         defaultRules.counters,
@@ -66,7 +57,7 @@ export const yomiJa: YomiJa = {
     return toReading(input, options);
   },
   readNumber(value, options) {
-    return joinTokens(readNumberTokens(value, defaultRules.core, resolveVariant(options?.variant)));
+    return joinTokens(readNumberTokens(value, defaultRules.core, options?.variant));
   },
 };
 

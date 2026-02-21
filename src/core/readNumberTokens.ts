@@ -15,8 +15,7 @@ function readZero(variant: VariantConfig, core: CoreRules): ReadingToken {
   return core.variants.zero[key];
 }
 
-function readDigit(value: bigint, variant: VariantConfig, core: CoreRules): ReadingToken[] {
-  const digit = Number(value);
+function readDigit(digit: number, variant: VariantConfig, core: CoreRules): ReadingToken[] {
   if (digit === 4) {
     const key = variant.four ?? core.defaultVariant.four;
     return [core.variants.four[key === "shi" ? "shi" : "yon"]];
@@ -37,16 +36,19 @@ function read0To9999(n: number, variant: VariantConfig, core: CoreRules): Readin
   const out: ReadingToken[] = [];
   const specialThousands = core.specialThousands;
   const specialHundreds = core.specialHundreds;
+  const units10 = core.smallUnits["10"];
+  const units100 = core.smallUnits["100"];
+  const units1000 = core.smallUnits["1000"];
 
   if (value >= 1000) {
     const digit = Math.floor(value / 1000);
     value %= 1000;
     if (digit === 1) {
-      out.push(...core.smallUnits["1000"]);
+      out.push(...units1000);
     } else if (specialThousands[String(digit)] !== undefined) {
       out.push(...specialThousands[String(digit)]);
     } else {
-      out.push(...readDigit(BigInt(digit), variant, core), ...core.smallUnits["1000"]);
+      out.push(...readDigit(digit, variant, core), ...units1000);
     }
   }
 
@@ -54,11 +56,11 @@ function read0To9999(n: number, variant: VariantConfig, core: CoreRules): Readin
     const digit = Math.floor(value / 100);
     value %= 100;
     if (digit === 1) {
-      out.push(...core.smallUnits["100"]);
+      out.push(...units100);
     } else if (specialHundreds[String(digit)] !== undefined) {
       out.push(...specialHundreds[String(digit)]);
     } else {
-      out.push(...readDigit(BigInt(digit), variant, core), ...core.smallUnits["100"]);
+      out.push(...readDigit(digit, variant, core), ...units100);
     }
   }
 
@@ -66,14 +68,14 @@ function read0To9999(n: number, variant: VariantConfig, core: CoreRules): Readin
     const digit = Math.floor(value / 10);
     value %= 10;
     if (digit === 1) {
-      out.push(...core.smallUnits["10"]);
+      out.push(...units10);
     } else {
-      out.push(...readDigit(BigInt(digit), variant, core), ...core.smallUnits["10"]);
+      out.push(...readDigit(digit, variant, core), ...units10);
     }
   }
 
   if (value > 0) {
-    out.push(...readDigit(BigInt(value), variant, core));
+    out.push(...readDigit(value, variant, core));
   }
 
   return out;
@@ -81,22 +83,35 @@ function read0To9999(n: number, variant: VariantConfig, core: CoreRules): Readin
 
 function readTokensBy4DigitsChunks(value: bigint, core: CoreRules, variant: VariantConfig): ReadingToken[] {
   let remaining = value;
-  const chunks: ReadingToken[][] = [];
-  const unitByPow10 = new Map<number, ReadingToken[]>(
-    core.bigUnits.map((entry) => [entry.pow10, entry.reading])
-  );
+  const chunks: Array<{ pow10: number; tokens: ReadingToken[] }> = [];
 
   let pow10 = 0;
   while (remaining > 0n) {
     const chunk = Number(remaining % 10000n);
     if (chunk !== 0) {
-      const tokens = read0To9999(chunk, variant, core);
-      const unitTokens = unitByPow10.get(pow10) ?? [];
-      chunks.push([...tokens, ...unitTokens]);
+      chunks.push({ pow10, tokens: read0To9999(chunk, variant, core) });
     }
     remaining /= 10000n;
     pow10 += 4;
   }
 
-  return chunks.reverse().flat();
+  const out: ReadingToken[] = [];
+  for (let i = chunks.length - 1; i >= 0; i -= 1) {
+    const item = chunks[i];
+    out.push(...item.tokens);
+    const unitTokens = readBigUnit(item.pow10, core.bigUnits);
+    if (unitTokens) {
+      out.push(...unitTokens);
+    }
+  }
+  return out;
+}
+
+function readBigUnit(pow10: number, bigUnits: CoreRules["bigUnits"]): ReadingToken[] | undefined {
+  for (const entry of bigUnits) {
+    if (entry.pow10 === pow10) {
+      return entry.reading;
+    }
+  }
+  return undefined;
 }

@@ -11,7 +11,11 @@
   "scripts": {
     "build": "tsc",
     "start": "node dist/cli/yomi.js",
-    "test": "node scripts/run-cases.js"
+    "test": "node scripts/run-cases.js",
+    "bench:node": "node bench/bench_node.mjs --cases test/cases.json --iterations 20000",
+    "bench:python": "python3 python_impl/yomi.py bench --cases test/cases.json --iterations 20000",
+    "bench:rust": "cargo run --quiet --release --manifest-path rust_impl/Cargo.toml -- bench --cases test/cases.json --iterations 20000",
+    "bench:compare": "python3 scripts/compare_benchmarks.py --cases test/cases.json --iterations 20000"
   },
   "engines": {
     "node": ">=20"
