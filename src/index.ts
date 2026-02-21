@@ -1,4 +1,4 @@
-import type { ReadOptions, ReadResult, YomiJa } from "./rules/types.js";
+import type { ReadOptions, ReadResult, RuleBundle, YomiJa } from "./rules/types.js";
 import { normalizeInput } from "./core/normalize.js";
 import { parseNumber } from "./core/parseNumber.js";
 import { readNumberTokens } from "./core/readNumberTokens.js";
@@ -7,11 +7,9 @@ import { detectCounter } from "./counters/detect.js";
 import { applyCounter } from "./counters/apply.js";
 import { loadRules } from "./rules/load.js";
 
-const defaultRules = loadRules();
-
-function toReading(input: string, options?: ReadOptions) {
+function toReading(input: string, rules: RuleBundle, options?: ReadOptions) {
   const normalized = normalizeInput(input);
-  const detected = detectCounter(normalized, defaultRules.counters);
+  const detected = detectCounter(normalized, rules.counters);
   const numberText = detected ? detected.numberPart : normalized;
   const numberValue = parseNumber(numberText);
 
@@ -22,11 +20,11 @@ function toReading(input: string, options?: ReadOptions) {
     return null;
   }
 
-  const baseTokens = readNumberTokens(numberValue, defaultRules.core, options?.variant);
+  const baseTokens = readNumberTokens(numberValue, rules.core, options?.variant);
   const applied = detected
     ? applyCounter(
-        defaultRules.counters,
-        defaultRules.patterns,
+        rules.counters,
+        rules.patterns,
         {
           counterId: detected.counterId,
           numberValue,
@@ -48,18 +46,38 @@ function toReading(input: string, options?: ReadOptions) {
   };
 }
 
-export const yomiJa: YomiJa = {
-  read(input, options) {
-    const result = toReading(input, options);
-    return result === null ? null : result.reading;
-  },
-  readDetailed(input, options) {
-    return toReading(input, options);
-  },
-  readNumber(value, options) {
-    return joinTokens(readNumberTokens(value, defaultRules.core, options?.variant));
-  },
-};
+function createYomiJaWithRules(rules: RuleBundle): YomiJa {
+  return {
+    read(input, options) {
+      const result = toReading(input, rules, options);
+      return result === null ? null : result.reading;
+    },
+    readDetailed(input, options) {
+      return toReading(input, rules, options);
+    },
+    readNumber(value, options) {
+      return joinTokens(readNumberTokens(value, rules.core, options?.variant));
+    },
+  };
+}
+
+export function createYomiJa(ruleDir?: string): YomiJa {
+  return createYomiJaWithRules(loadRules(ruleDir));
+}
+
+const defaultRules = loadRules();
+export const yomiJa: YomiJa = createYomiJaWithRules(defaultRules);
+
+export function read(input: string, options?: ReadOptions): string | null {
+  return yomiJa.read(input, options);
+}
+
+export function readDetailed(input: string, options?: ReadOptions): ReadResult | null {
+  return yomiJa.readDetailed(input, options);
+}
+
+export function readNumber(value: bigint, options?: ReadOptions): string {
+  return yomiJa.readNumber(value, options);
+}
 
 export default yomiJa;
-export { toReading as readDetailedImpl };

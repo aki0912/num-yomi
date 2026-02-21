@@ -56,9 +56,12 @@ node dist/cli/yomi.js "$100"
 ## ライブラリ API
 
 ```ts
-import yomiJa from "./dist/index.js";
+import yomiJa, { read, createYomiJa } from "./dist/index.js";
 
 const a = yomiJa.read("¥300");
+// => さんびゃくえん
+
+const a2 = read("300円");
 // => さんびゃくえん
 
 const b = yomiJa.read("1日", { mode: { day: "duration" } });
@@ -72,10 +75,15 @@ const d = yomiJa.readDetailed("3匹");
 
 const e = yomiJa.readNumber(5000n);
 // => ごせん
+
+const custom = createYomiJa("./rules/ja");
+const f = custom.read("$100");
+// => ひゃくどる
 ```
 
 ### API 仕様
 
+- `createYomiJa(ruleDir?)` -> `YomiJa`（ルールディレクトリを切替可能）
 - `read(input, options?)` -> `string | null`
 - `readDetailed(input, options?)` -> 詳細オブジェクト or `null`
 - `readNumber(bigint, options?)` -> `string`
@@ -193,10 +201,47 @@ pnpm test
 同じルールファイル（`rules/ja/*.json`）を読む実装を用意しています。
 
 - Python: `python_impl/yomi.py`
-- Rust: `rust_impl/src/main.rs`
+- Rust: `rust_impl/src/lib.rs`（ライブラリ）, `rust_impl/src/main.rs`（CLI）
 
 Rust 実装は `build.rs` で `rules/ja/*.json` をビルド時に構造体定数へ変換します。
 実行時に JSON をパースせず、生成済みルールを直接参照します。
+
+Python から呼ぶ例:
+
+```python
+from python_impl import read, YomiJaPy
+
+print(read("300円"))
+# さんびゃくえん
+
+yomi = YomiJaPy()
+print(yomi.read("1日", {"mode": {"day": "duration"}}))
+# いちにち
+```
+
+Rust から呼ぶ例:
+
+```toml
+# Cargo.toml
+[dependencies]
+yomi_rust = { path = "../japanese_number_reading/rust_impl" }
+```
+
+```rust
+use yomi_rust::{read, read_number_i64, ReadConfig};
+
+fn main() {
+    let out = read("300円", None).unwrap().unwrap();
+    println!("{out}");
+
+    let cfg = ReadConfig::default().with_mode("day", "duration");
+    let out2 = read("1日", Some(&cfg)).unwrap().unwrap();
+    println!("{out2}");
+
+    let n = read_number_i64(5000, None).unwrap();
+    println!("{n}");
+}
+```
 
 単発実行例:
 

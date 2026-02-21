@@ -40,6 +40,17 @@ BIG_UNITS: Dict[str, int] = {
     "京": 10_000_000_000_000_000,
 }
 
+__all__ = [
+    "YomiJaPy",
+    "create_yomi",
+    "get_default_yomi",
+    "load_rules",
+    "read",
+    "read_detailed",
+    "read_number",
+    "run_benchmark",
+]
+
 
 def normalize_input(value: str) -> str:
     normalized = unicodedata.normalize("NFKC", value)
@@ -446,6 +457,34 @@ class YomiJaPy:
             "tokens": tokens,
             "reading": "".join(tokens),
         }
+
+
+_DEFAULT_YOMI: Optional[YomiJaPy] = None
+
+
+def create_yomi(rule_dir: Optional[Path] = None) -> YomiJaPy:
+    if rule_dir is None:
+        return YomiJaPy()
+    return YomiJaPy(load_rules(rule_dir))
+
+
+def get_default_yomi() -> YomiJaPy:
+    global _DEFAULT_YOMI
+    if _DEFAULT_YOMI is None:
+        _DEFAULT_YOMI = YomiJaPy()
+    return _DEFAULT_YOMI
+
+
+def read(input_text: str, options: Optional[Dict[str, Any]] = None) -> Optional[str]:
+    return get_default_yomi().read(input_text, options)
+
+
+def read_detailed(input_text: str, options: Optional[Dict[str, Any]] = None) -> Optional[Dict[str, Any]]:
+    return get_default_yomi().read_detailed(input_text, options)
+
+
+def read_number(value: int, options: Optional[Dict[str, Any]] = None) -> str:
+    return get_default_yomi().read_number(value, options)
 
 
 def run_benchmark(cases_path: Path, iterations: int) -> Dict[str, Any]:
