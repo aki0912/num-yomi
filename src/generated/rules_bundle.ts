@@ -2289,7 +2289,7 @@ export const GENERATED_RULE_BUNDLE = {
             "日"
           ]
         },
-        "defaultMode": "date",
+        "defaultMode": "duration",
         "modes": {
           "date": {
             "compose": {

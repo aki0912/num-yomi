@@ -29,6 +29,7 @@ const CANDIDATE_START_RE = /[0-9０-９+\-＋－$¥￥第零〇一二三四五�
 const MAX_REPLACE_SPAN = 64;
 const SINGLE_KANJI_DIGIT_RE = /^[零〇一二三四五六七八九]$/u;
 const HAN_CHAR_RE = /\p{Script=Han}/u;
+const TRAILING_WHITESPACE_RE = /\s$/u;
 const READ_CACHE_LIMIT = 8192;
 const REPLACE_CACHE_LIMIT = 2048;
 const REPLACE_DETAILED_CACHE_LIMIT = 1024;
@@ -298,6 +299,91 @@ function isTaiExpressionFragment(fragment: string): boolean {
   return detectTaiExpression(normalizeInput(fragment)) !== null;
 }
 
+const WHITESPACE_ONLY_RE = /^\s*$/u;
+
+function shouldUseDateModeForDay(
+  input: string,
+  fragmentStart: number,
+  previousCounterId: string | undefined,
+  previousReplacementEnd: number,
+  options?: ReadOptions
+): boolean {
+  if (options?.mode?.day !== undefined) {
+    return false;
+  }
+  if (previousCounterId !== "month") {
+    return false;
+  }
+  if (previousReplacementEnd < 0 || previousReplacementEnd > fragmentStart) {
+    return false;
+  }
+  return WHITESPACE_ONLY_RE.test(input.slice(previousReplacementEnd, fragmentStart));
+}
+
+function withDayDateModeIfUnspecified(options?: ReadOptions): ReadOptions | undefined {
+  if (options?.mode?.day !== undefined) {
+    return options;
+  }
+  const mode = {
+    ...(options?.mode ?? {}),
+    day: "date",
+  };
+  if (!options) {
+    return { mode };
+  }
+  return {
+    ...options,
+    mode,
+  };
+}
+
+function resolveReadOptionsForReplaceFragment(
+  input: string,
+  fragmentStart: number,
+  previousCounterId: string | undefined,
+  previousReplacementEnd: number,
+  options?: ReadOptions
+): ReadOptions | undefined {
+  if (!shouldUseDateModeForDay(input, fragmentStart, previousCounterId, previousReplacementEnd, options)) {
+    return options;
+  }
+  return withDayDateModeIfUnspecified(options);
+}
+
+function readMonthDayExpressionTokens(
+  input: string,
+  rules: RuleBundle,
+  options?: ReadOptions
+): { number: string; tokens: string[] } | null {
+  const monthEnd = input.indexOf("月");
+  if (monthEnd <= 0 || monthEnd >= input.length - 1) {
+    return null;
+  }
+  if (monthEnd !== input.lastIndexOf("月")) {
+    return null;
+  }
+
+  const monthPart = input.slice(0, monthEnd + 1);
+  const dayPart = input.slice(monthEnd + 1);
+  if (dayPart.length === 0 || !dayPart.endsWith("日") || /\s/u.test(dayPart[0])) {
+    return null;
+  }
+
+  const month = toReading(monthPart, rules, options);
+  if (!month || month.counterId !== "month") {
+    return null;
+  }
+  const day = toReading(dayPart, rules, withDayDateModeIfUnspecified(options));
+  if (!day || day.counterId !== "day") {
+    return null;
+  }
+
+  return {
+    number: `${month.number}月${day.number}日`,
+    tokens: [...month.tokens, ...day.tokens],
+  };
+}
+
 function replaceInTextDetailedWithRules(input: string, rules: RuleBundle, markers: string[], options?: ReadOptions): ReplaceResult {
   if (input.length === 0) {
     return {
@@ -308,6 +394,8 @@ function replaceInTextDetailedWithRules(input: string, rules: RuleBundle, marker
   }
   let out = "";
   let index = 0;
+  let previousCounterId: string | undefined;
+  let previousReplacementEnd = -1;
   const replacements: ReplaceResult["replacements"] = [];
   while (index < input.length) {
     const ch = input[index];
@@ -320,9 +408,20 @@ function replaceInTextDetailedWithRules(input: string, rules: RuleBundle, marker
     const maxEnd = Math.min(input.length, index + MAX_REPLACE_SPAN);
     let matchedReading: string | undefined;
     let matchedSource: string | undefined;
+    let matchedCounterId: string | undefined;
     let matchedEnd = index;
+    const contextualOptions = resolveReadOptionsForReplaceFragment(
+      input,
+      index,
+      previousCounterId,
+      previousReplacementEnd,
+      options
+    );
     for (let end = maxEnd; end > index; end -= 1) {
       const fragment = input.slice(index, end);
+      if (TRAILING_WHITESPACE_RE.test(fragment)) {
+        continue;
+      }
       if (!REPLACE_TRIGGER_RE.test(fragment)) {
         continue;
       }
@@ -334,12 +433,13 @@ function replaceInTextDetailedWithRules(input: string, rules: RuleBundle, marker
           continue;
         }
       }
-      const reading = toReading(fragment, rules, options);
+      const reading = toReading(fragment, rules, contextualOptions);
       if (!reading) {
         continue;
       }
       matchedReading = reading.reading;
       matchedSource = fragment;
+      matchedCounterId = reading.counterId;
       matchedEnd = end;
       break;
     }
@@ -352,6 +452,8 @@ function replaceInTextDetailedWithRules(input: string, rules: RuleBundle, marker
         source: matchedSource ?? input.slice(index, matchedEnd),
         reading: matchedReading,
       });
+      previousCounterId = matchedCounterId;
+      previousReplacementEnd = matchedEnd;
       index = matchedEnd;
       continue;
     }
@@ -372,6 +474,8 @@ function replaceInTextWithRules(input: string, rules: RuleBundle, markers: strin
   }
   let out = "";
   let index = 0;
+  let previousCounterId: string | undefined;
+  let previousReplacementEnd = -1;
   while (index < input.length) {
     const ch = input[index];
     if (!CANDIDATE_START_RE.test(ch)) {
@@ -382,9 +486,20 @@ function replaceInTextWithRules(input: string, rules: RuleBundle, markers: strin
 
     const maxEnd = Math.min(input.length, index + MAX_REPLACE_SPAN);
     let matchedReading: string | undefined;
+    let matchedCounterId: string | undefined;
     let matchedEnd = index;
+    const contextualOptions = resolveReadOptionsForReplaceFragment(
+      input,
+      index,
+      previousCounterId,
+      previousReplacementEnd,
+      options
+    );
     for (let end = maxEnd; end > index; end -= 1) {
       const fragment = input.slice(index, end);
+      if (TRAILING_WHITESPACE_RE.test(fragment)) {
+        continue;
+      }
       if (!REPLACE_TRIGGER_RE.test(fragment)) {
         continue;
       }
@@ -396,17 +511,20 @@ function replaceInTextWithRules(input: string, rules: RuleBundle, markers: strin
           continue;
         }
       }
-      const reading = toReading(fragment, rules, options);
+      const reading = toReading(fragment, rules, contextualOptions);
       if (!reading) {
         continue;
       }
       matchedReading = reading.reading;
+      matchedCounterId = reading.counterId;
       matchedEnd = end;
       break;
     }
 
     if (matchedReading !== undefined) {
       out += matchedReading;
+      previousCounterId = matchedCounterId;
+      previousReplacementEnd = matchedEnd;
       index = matchedEnd;
       continue;
     }
@@ -502,7 +620,7 @@ function readTaiExpressionTokens(input: string, rules: RuleBundle, options?: Rea
   };
 }
 
-function toReading(input: string, rules: RuleBundle, options?: ReadOptions) {
+function toReading(input: string, rules: RuleBundle, options?: ReadOptions): ReadResult | null {
   const normalized = normalizeInput(input);
   const tai = readTaiExpressionTokens(normalized, rules, options);
   if (tai) {
@@ -514,6 +632,18 @@ function toReading(input: string, rules: RuleBundle, options?: ReadOptions) {
       modeUsed: undefined,
       tokens: tai.tokens,
       reading: joinTokens(tai.tokens),
+    } satisfies ReadResult;
+  }
+  const monthDay = readMonthDayExpressionTokens(normalized, rules, options);
+  if (monthDay) {
+    return {
+      input,
+      normalized,
+      number: monthDay.number,
+      counterId: undefined,
+      modeUsed: undefined,
+      tokens: monthDay.tokens,
+      reading: joinTokens(monthDay.tokens),
     } satisfies ReadResult;
   }
   let prefix: CounterPrefixMatch | undefined;

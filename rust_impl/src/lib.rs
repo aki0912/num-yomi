@@ -399,6 +399,11 @@ struct ParsedDecimal {
     fraction_digits: Vec<u8>,
 }
 
+struct ReadWithCounter {
+    reading: String,
+    counter_id: Option<&'static str>,
+}
+
 fn main() {
     let args: Vec<String> = env::args().collect();
     if args.len() < 2 {
@@ -687,14 +692,23 @@ fn parse_nine_variant(input: &str) -> Result<NineVariant, String> {
     }
 }
 
-fn read_with_options(
+fn read_with_options_detailed(
     input: &str,
     options: &ReadOptions,
     rules: &RuntimeRules,
-) -> Result<Option<String>, String> {
+) -> Result<Option<ReadWithCounter>, String> {
     let normalized = normalize_input(input);
     if let Some(tai_tokens) = read_tai_expression_tokens(&normalized, options, rules)? {
-        return Ok(Some(join_tokens(&tai_tokens)));
+        return Ok(Some(ReadWithCounter {
+            reading: join_tokens(&tai_tokens),
+            counter_id: None,
+        }));
+    }
+    if let Some(month_day_reading) = read_month_day_expression(&normalized, options, rules)? {
+        return Ok(Some(ReadWithCounter {
+            reading: month_day_reading,
+            counter_id: None,
+        }));
     }
 
     let mut prefix: Option<CounterPrefixMatch> = None;
@@ -723,9 +737,9 @@ fn read_with_options(
 
     if let Some(decimal) = parse_decimal(number_text) {
         let base_tokens = read_decimal_tokens(&decimal, rules.core, options)?;
-        let final_tokens = if let Some(matched) = detected {
+        let (final_tokens, counter_id) = if let Some(matched) = detected {
             match apply_counter_decimal(matched.counter, &base_tokens, options, rules) {
-                Ok(tokens) => tokens,
+                Ok(tokens) => (tokens, Some(matched.counter.id)),
                 Err(message) => {
                     if options.strict {
                         return Err(message);
@@ -734,11 +748,14 @@ fn read_with_options(
                 }
             }
         } else {
-            base_tokens
+            (base_tokens, None)
         };
 
         let final_tokens = prepend_counter_prefix(append_counter_postfix(final_tokens, postfix), prefix);
-        return Ok(Some(join_tokens(&final_tokens)));
+        return Ok(Some(ReadWithCounter {
+            reading: join_tokens(&final_tokens),
+            counter_id,
+        }));
     }
 
     let number_value = parse_number(number_text);
@@ -750,14 +767,28 @@ fn read_with_options(
     };
 
     let base_tokens = read_number_tokens(&number_value, rules.core, options)?;
-    let final_tokens = if let Some(matched) = detected {
-        apply_counter(matched.counter, &number_value, &base_tokens, options, rules)
+    let (final_tokens, counter_id) = if let Some(matched) = detected {
+        (
+            apply_counter(matched.counter, &number_value, &base_tokens, options, rules),
+            Some(matched.counter.id),
+        )
     } else {
-        base_tokens
+        (base_tokens, None)
     };
 
     let final_tokens = prepend_counter_prefix(append_counter_postfix(final_tokens, postfix), prefix);
-    Ok(Some(join_tokens(&final_tokens)))
+    Ok(Some(ReadWithCounter {
+        reading: join_tokens(&final_tokens),
+        counter_id,
+    }))
+}
+
+fn read_with_options(
+    input: &str,
+    options: &ReadOptions,
+    rules: &RuntimeRules,
+) -> Result<Option<String>, String> {
+    Ok(read_with_options_detailed(input, options, rules)?.map(|result| result.reading))
 }
 
 fn replace_in_text_with_options(input: &str, options: &ReadOptions, rules: &RuntimeRules) -> String {
@@ -770,6 +801,8 @@ fn replace_in_text_with_options(input: &str, options: &ReadOptions, rules: &Runt
     let markers = replace_markers();
     let mut out = String::with_capacity(input.len());
     let mut index = 0usize;
+    let mut previous_counter_id: Option<&'static str> = None;
+    let mut previous_replacement_end_byte: Option<usize> = None;
 
     while index < char_len {
         let ch = positions[index].1;
@@ -779,16 +812,27 @@ fn replace_in_text_with_options(input: &str, options: &ReadOptions, rules: &Runt
             continue;
         }
 
+        let start_byte = positions[index].0;
+        let contextual_options = resolve_read_options_for_replace_fragment(
+            input,
+            start_byte,
+            previous_counter_id,
+            previous_replacement_end_byte,
+            options,
+        );
+
         let max_end = std::cmp::min(char_len, index + MAX_REPLACE_SPAN);
-        let mut matched: Option<(usize, String)> = None;
+        let mut matched: Option<(usize, usize, ReadWithCounter)> = None;
         for end in (index + 1..=max_end).rev() {
-            let start_byte = positions[index].0;
             let end_byte = if end < char_len {
                 positions[end].0
             } else {
                 input.len()
             };
             let fragment = &input[start_byte..end_byte];
+            if fragment.chars().next_back().is_some_and(char::is_whitespace) {
+                continue;
+            }
             if !has_replace_trigger(fragment) {
                 continue;
             }
@@ -803,14 +847,16 @@ fn replace_in_text_with_options(input: &str, options: &ReadOptions, rules: &Runt
                 }
             }
 
-            if let Ok(Some(reading)) = read_with_options(fragment, options, rules) {
-                matched = Some((end, reading));
+            if let Ok(Some(reading)) = read_with_options_detailed(fragment, &contextual_options, rules) {
+                matched = Some((end, end_byte, reading));
                 break;
             }
         }
 
-        if let Some((end, reading)) = matched {
-            out.push_str(&reading);
+        if let Some((end, end_byte, reading)) = matched {
+            out.push_str(&reading.reading);
+            previous_counter_id = reading.counter_id;
+            previous_replacement_end_byte = Some(end_byte);
             index = end;
             continue;
         }
@@ -1043,9 +1089,114 @@ fn read_tai_expression_tokens(
     Ok(Some(tokens))
 }
 
+fn with_day_date_mode_if_unspecified(options: &ReadOptions) -> ReadOptions {
+    if options.mode_for("day").is_some() {
+        return options.clone();
+    }
+
+    let mut merged = options.clone();
+    merged.modes.push(ModeOverride {
+        counter_id: "day".to_string(),
+        mode_id: "date".to_string(),
+    });
+    merged
+}
+
+fn read_month_day_expression(
+    input: &str,
+    options: &ReadOptions,
+    rules: &RuntimeRules,
+) -> Result<Option<String>, String> {
+    let Some(month_split) = input.find('月') else {
+        return Ok(None);
+    };
+    if month_split == 0 {
+        return Ok(None);
+    }
+
+    let month_end = month_split + '月'.len_utf8();
+    if month_end >= input.len() {
+        return Ok(None);
+    }
+    if input[month_end..].contains('月') {
+        return Ok(None);
+    }
+
+    let month_part = &input[..month_end];
+    let day_part = &input[month_end..];
+    if !day_part.ends_with('日') {
+        return Ok(None);
+    }
+    if day_part.chars().next().is_some_and(char::is_whitespace) {
+        return Ok(None);
+    }
+
+    let Some(month_reading) = read_with_options_detailed(month_part, options, rules)? else {
+        return Ok(None);
+    };
+    if month_reading.counter_id != Some("month") {
+        return Ok(None);
+    }
+
+    let day_options = with_day_date_mode_if_unspecified(options);
+    let Some(day_reading) = read_with_options_detailed(day_part, &day_options, rules)? else {
+        return Ok(None);
+    };
+    if day_reading.counter_id != Some("day") {
+        return Ok(None);
+    }
+
+    Ok(Some(format!("{}{}", month_reading.reading, day_reading.reading)))
+}
+
 fn is_tai_expression_fragment(fragment: &str) -> bool {
     let normalized = normalize_input(fragment);
     detect_tai_expression(&normalized).is_some()
+}
+
+fn should_use_date_mode_for_day(
+    input: &str,
+    fragment_start_byte: usize,
+    previous_counter_id: Option<&'static str>,
+    previous_replacement_end_byte: Option<usize>,
+    options: &ReadOptions,
+) -> bool {
+    if options.mode_for("day").is_some() {
+        return false;
+    }
+    if previous_counter_id != Some("month") {
+        return false;
+    }
+    let Some(previous_end) = previous_replacement_end_byte else {
+        return false;
+    };
+    if previous_end > fragment_start_byte {
+        return false;
+    }
+
+    input[previous_end..fragment_start_byte]
+        .chars()
+        .all(char::is_whitespace)
+}
+
+fn resolve_read_options_for_replace_fragment(
+    input: &str,
+    fragment_start_byte: usize,
+    previous_counter_id: Option<&'static str>,
+    previous_replacement_end_byte: Option<usize>,
+    options: &ReadOptions,
+) -> ReadOptions {
+    if should_use_date_mode_for_day(
+        input,
+        fragment_start_byte,
+        previous_counter_id,
+        previous_replacement_end_byte,
+        options,
+    ) {
+        return with_day_date_mode_if_unspecified(options);
+    }
+
+    options.clone()
 }
 
 fn should_convert_bare_number_fragment(

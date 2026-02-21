@@ -1265,7 +1265,7 @@
       "surface": {
         "suffix": ["日"]
       },
-      "defaultMode": "date",
+      "defaultMode": "duration",
       "modes": {
         "date": {
           "compose": {

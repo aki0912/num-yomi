@@ -426,7 +426,7 @@ GENERATED_RULES: Dict[str, Any] = {'core': {'variants': {'zero': {'rei': 'れい
                                                               '10': ['とお']},
                                                'fallback': {'type': 'concat', 'suffixReading': ['つ']}}},
                            'day': {'surface': {'suffix': ['日']},
-                                   'defaultMode': 'date',
+                                   'defaultMode': 'duration',
                                    'modes': {'date': {'compose': {'type': 'exceptions_first',
                                                                   'exceptions': {'1': ['ついたち'],
                                                                                  '2': ['ふつか'],

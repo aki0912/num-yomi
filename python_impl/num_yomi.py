@@ -59,6 +59,7 @@ CANDIDATE_START_RE = re.compile(r"[0-9０-９+\-＋－$¥￥第零〇一二三�
 MAX_REPLACE_SPAN = 64
 SINGLE_KANJI_DIGITS = set("零〇一二三四五六七八九")
 HAN_CHAR_RE = re.compile(r"[\u3400-\u4DBF\u4E00-\u9FFF\uF900-\uFAFF]")
+WHITESPACE_ONLY_RE = re.compile(r"^\s*$")
 READ_CACHE_LIMIT = 8_192
 REPLACE_CACHE_LIMIT = 2_048
 
@@ -302,6 +303,63 @@ def detect_tai_expression(input_text: str) -> Optional[Tuple[str, str]]:
 def is_tai_expression_fragment(fragment: str) -> bool:
     normalized = normalize_input(fragment)
     return detect_tai_expression(normalized) is not None
+
+
+def with_day_date_mode_if_unspecified(options: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+    if isinstance(options, dict):
+        mode = options.get("mode")
+        if isinstance(mode, dict) and "day" in mode:
+            return options
+
+        merged_mode = dict(mode) if isinstance(mode, dict) else {}
+        merged_mode["day"] = "date"
+        merged_options = dict(options)
+        merged_options["mode"] = merged_mode
+        return merged_options
+
+    return {"mode": {"day": "date"}}
+
+
+def should_use_date_mode_for_day(
+    input_text: str,
+    fragment_start: int,
+    previous_counter_id: Optional[str],
+    previous_replacement_end: Optional[int],
+    options: Optional[Dict[str, Any]],
+) -> bool:
+    if isinstance(options, dict):
+        mode = options.get("mode")
+        if isinstance(mode, dict) and "day" in mode:
+            return False
+
+    if previous_counter_id != "month":
+        return False
+    if previous_replacement_end is None:
+        return False
+    if previous_replacement_end < 0 or previous_replacement_end > fragment_start:
+        return False
+
+    between = input_text[previous_replacement_end:fragment_start]
+    return WHITESPACE_ONLY_RE.fullmatch(between) is not None
+
+
+def resolve_read_options_for_replace_fragment(
+    input_text: str,
+    fragment_start: int,
+    previous_counter_id: Optional[str],
+    previous_replacement_end: Optional[int],
+    options: Optional[Dict[str, Any]],
+) -> Optional[Dict[str, Any]]:
+    if not should_use_date_mode_for_day(
+        input_text,
+        fragment_start,
+        previous_counter_id,
+        previous_replacement_end,
+        options,
+    ):
+        return options
+
+    return with_day_date_mode_if_unspecified(options)
 
 
 def parse_kansuji(input_text: str) -> Optional[int]:
@@ -842,6 +900,36 @@ class YomiJaPy:
         tokens = read_number_tokens(value, self.core, options, self.unit_by_pow10)
         return "".join(tokens)
 
+    def _read_month_day_expression_tokens(
+        self,
+        normalized: str,
+        options: Optional[Dict[str, Any]],
+    ) -> Optional[Dict[str, Any]]:
+        month_end = normalized.find("月")
+        if month_end <= 0 or month_end >= len(normalized) - 1:
+            return None
+        if month_end != normalized.rfind("月"):
+            return None
+
+        month_part = normalized[: month_end + 1]
+        day_part = normalized[month_end + 1 :]
+        if day_part == "" or not day_part.endswith("日") or day_part[0].isspace():
+            return None
+
+        month = self.read_detailed(month_part, options)
+        if month is None or month.get("counterId") != "month":
+            return None
+
+        day_options = with_day_date_mode_if_unspecified(options)
+        day = self.read_detailed(day_part, day_options)
+        if day is None or day.get("counterId") != "day":
+            return None
+
+        return {
+            "number": f"{month.get('number')}月{day.get('number')}日",
+            "tokens": list(month["tokens"]) + list(day["tokens"]),
+        }
+
     def replace_in_text(self, input_text: str, options: Optional[Dict[str, Any]] = None) -> str:
         if options is None:
             if self._replace_hot_no_options is not None and self._replace_hot_no_options[0] == input_text:
@@ -865,6 +953,8 @@ class YomiJaPy:
         out: List[str] = []
         index = 0
         input_len = len(input_text)
+        previous_counter_id: Optional[str] = None
+        previous_replacement_end: Optional[int] = None
 
         while index < input_len:
             ch = input_text[index]
@@ -875,10 +965,20 @@ class YomiJaPy:
 
             max_end = min(input_len, index + MAX_REPLACE_SPAN)
             matched_reading: Optional[str] = None
+            matched_counter_id: Optional[str] = None
             matched_end = index
+            contextual_options = resolve_read_options_for_replace_fragment(
+                input_text,
+                index,
+                previous_counter_id,
+                previous_replacement_end,
+                options,
+            )
 
             for end in range(max_end, index, -1):
                 fragment = input_text[index:end]
+                if fragment and fragment[-1].isspace():
+                    continue
                 if REPLACE_TRIGGER_RE.search(fragment) is None:
                     continue
                 if not contains_numeric_char(fragment):
@@ -888,15 +988,20 @@ class YomiJaPy:
                         input_text, index, end, fragment
                     ) and not is_tai_expression_fragment(fragment):
                         continue
-                reading = self.read(fragment, options)
+                reading = self.read(fragment, contextual_options)
                 if reading is None:
                     continue
                 matched_reading = reading
+                detailed = self.read_detailed(fragment, contextual_options)
+                if detailed is not None and isinstance(detailed.get("counterId"), str):
+                    matched_counter_id = detailed["counterId"]
                 matched_end = end
                 break
 
             if matched_reading is not None:
                 out.append(matched_reading)
+                previous_counter_id = matched_counter_id
+                previous_replacement_end = matched_end
                 index = matched_end
                 continue
 
@@ -921,6 +1026,19 @@ class YomiJaPy:
                 "input": input_text,
                 "normalized": normalized,
                 "number": tai["number"],
+                "counterId": None,
+                "modeUsed": None,
+                "tokens": tokens,
+                "reading": "".join(tokens),
+            }
+
+        month_day = self._read_month_day_expression_tokens(normalized, options)
+        if month_day is not None:
+            tokens = list(month_day["tokens"])
+            return {
+                "input": input_text,
+                "normalized": normalized,
+                "number": month_day["number"],
                 "counterId": None,
                 "modeUsed": None,
                 "tokens": tokens,
