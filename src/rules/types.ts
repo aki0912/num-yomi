@@ -25,11 +25,25 @@ export interface ReadResult {
   reading: string;
 }
 
+export interface ReplaceSegment {
+  start: number;
+  end: number;
+  source: string;
+  reading: string;
+}
+
+export interface ReplaceResult {
+  input: string;
+  output: string;
+  replacements: ReplaceSegment[];
+}
+
 export interface YomiJa {
   read(input: string, options?: ReadOptions): string | null;
   readDetailed(input: string, options?: ReadOptions): ReadResult | null;
   readNumber(n: bigint, options?: ReadOptions): string;
   replaceInText(input: string, options?: ReadOptions): string;
+  replaceInTextDetailed(input: string, options?: ReadOptions): ReplaceResult;
 }
 
 export interface CoreRules {

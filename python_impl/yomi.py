@@ -45,9 +45,11 @@ DECIMAL_POINT_TOKEN = "てん"
 COUNTER_PREFIXES: List[Tuple[str, List[str]]] = [("第", ["だい"])]
 COUNTER_POSTFIXES: List[Tuple[str, List[str]]] = [("目", ["め"]), ("め", ["め"])]
 KANJI_INT_CHARS_REPLACE = set("零〇一二三四五六七八九十百千万億兆京")
-REPLACE_TRIGGER_RE = re.compile(r"[0-9０-９$¥￥第]")
+REPLACE_TRIGGER_RE = re.compile(r"[0-9０-９$¥￥第零〇一二三四五六七八九十百千万億兆京]")
 CANDIDATE_START_RE = re.compile(r"[0-9０-９+\-＋－$¥￥第零〇一二三四五六七八九十百千万億兆京]")
 MAX_REPLACE_SPAN = 64
+SINGLE_KANJI_DIGITS = set("零〇一二三四五六七八九")
+HAN_CHAR_RE = re.compile(r"[\u3400-\u4DBF\u4E00-\u9FFF\uF900-\uFAFF]")
 
 __all__ = [
     "YomiJaPy",
@@ -208,6 +210,56 @@ def contains_numeric_char(input_text: str) -> bool:
 
 def contains_marker(input_text: str, markers: List[str]) -> bool:
     return any(marker in input_text for marker in markers)
+
+
+def is_ascii_alphanumeric(ch: Optional[str]) -> bool:
+    if ch is None:
+        return False
+    return ch.isascii() and ch.isalnum()
+
+
+def is_han_char(ch: Optional[str]) -> bool:
+    if ch is None:
+        return False
+    return HAN_CHAR_RE.fullmatch(ch) is not None
+
+
+def should_convert_bare_number_fragment(input_text: str, start: int, end: int, fragment: str) -> bool:
+    normalized = normalize_input(fragment)
+    if not has_parsable_number_text(normalized):
+        return False
+
+    before = input_text[start - 1] if start > 0 else None
+    after = input_text[end] if end < len(input_text) else None
+    if is_ascii_alphanumeric(before) or is_ascii_alphanumeric(after):
+        return False
+
+    # Prevent converting single kanji digits inside compound words, e.g. 一般.
+    if normalized in SINGLE_KANJI_DIGITS and (is_han_char(before) or is_han_char(after)):
+        return False
+
+    return True
+
+
+def detect_tai_expression(input_text: str) -> Optional[Tuple[str, str]]:
+    split_at = input_text.find("対")
+    if split_at <= 0:
+        return None
+    if split_at != input_text.rfind("対"):
+        return None
+    if split_at >= len(input_text) - 1:
+        return None
+
+    left = input_text[:split_at]
+    right = input_text[split_at + 1 :]
+    if not has_parsable_number_text(left) or not has_parsable_number_text(right):
+        return None
+    return left, right
+
+
+def is_tai_expression_fragment(fragment: str) -> bool:
+    normalized = normalize_input(fragment)
+    return detect_tai_expression(normalized) is not None
 
 
 def parse_kansuji(input_text: str) -> Optional[int]:
@@ -474,6 +526,70 @@ def read_decimal_tokens(
     return out
 
 
+def read_number_text_tokens(
+    number_text: str,
+    core: Dict[str, Any],
+    options: Optional[Dict[str, Any]],
+    unit_by_pow10: Dict[int, List[str]],
+) -> Optional[Dict[str, Any]]:
+    decimal = parse_decimal(number_text)
+    if decimal is not None:
+        return {
+            "normalized": decimal["normalized"],
+            "tokens": read_decimal_tokens(
+                decimal["sign"],
+                decimal["integerPart"],
+                decimal["fractionDigits"],
+                core,
+                options,
+                unit_by_pow10,
+            ),
+        }
+
+    number_value = parse_number(number_text)
+    if number_value is None:
+        return None
+
+    return {
+        "normalized": str(number_value),
+        "tokens": read_number_tokens(number_value, core, options, unit_by_pow10),
+    }
+
+
+def normalize_tai_left_tokens(tokens: List[str]) -> List[str]:
+    if not tokens:
+        return tokens
+    if tokens[-1] != "いち":
+        return tokens
+    return list(tokens[:-1]) + ["いっ"]
+
+
+def read_tai_expression_tokens(
+    input_text: str,
+    core: Dict[str, Any],
+    options: Optional[Dict[str, Any]],
+    unit_by_pow10: Dict[int, List[str]],
+) -> Optional[Dict[str, Any]]:
+    expr = detect_tai_expression(input_text)
+    if expr is None:
+        return None
+
+    left_text, right_text = expr
+    left = read_number_text_tokens(left_text, core, options, unit_by_pow10)
+    if left is None:
+        return None
+
+    right = read_number_text_tokens(right_text, core, options, unit_by_pow10)
+    if right is None:
+        return None
+
+    tokens = normalize_tai_left_tokens(left["tokens"]) + ["たい"] + list(right["tokens"])
+    return {
+        "number": f"{left['normalized']}対{right['normalized']}",
+        "tokens": tokens,
+    }
+
+
 def apply_tail_pattern(pattern: Dict[str, Any], tokens: List[str]) -> Tuple[List[str], str]:
     if not tokens:
         return tokens, pattern["defaultForm"]
@@ -662,7 +778,10 @@ class YomiJaPy:
                 if not contains_numeric_char(fragment):
                     continue
                 if not contains_marker(fragment, self.replace_markers):
-                    continue
+                    if not should_convert_bare_number_fragment(
+                        input_text, index, end, fragment
+                    ) and not is_tai_expression_fragment(fragment):
+                        continue
                 reading = self.read(fragment, options)
                 if reading is None:
                     continue
@@ -682,6 +801,19 @@ class YomiJaPy:
 
     def read_detailed(self, input_text: str, options: Optional[Dict[str, Any]] = None) -> Optional[Dict[str, Any]]:
         normalized = normalize_input(input_text)
+        tai = read_tai_expression_tokens(normalized, self.core, options, self.unit_by_pow10)
+        if tai is not None:
+            tokens = list(tai["tokens"])
+            return {
+                "input": input_text,
+                "normalized": normalized,
+                "number": tai["number"],
+                "counterId": None,
+                "modeUsed": None,
+                "tokens": tokens,
+                "reading": "".join(tokens),
+            }
+
         prefix = None
         postfix = None
         counter_input = normalized

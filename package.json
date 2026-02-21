@@ -14,7 +14,8 @@
     "./cli": "./dist/cli/yomi.js"
   },
   "bin": {
-    "yomi": "dist/cli/yomi.js"
+    "yomi": "dist/cli/yomi.js",
+    "yomi-file": "dist/cli/yomi-file.js"
   },
   "scripts": {
     "build": "tsc",

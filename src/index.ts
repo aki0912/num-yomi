@@ -1,4 +1,12 @@
-import type { CounterCompose, PatternCompose, ReadOptions, ReadResult, RuleBundle, YomiJa } from "./rules/types.js";
+import type {
+  CounterCompose,
+  PatternCompose,
+  ReadOptions,
+  ReadResult,
+  ReplaceResult,
+  RuleBundle,
+  YomiJa,
+} from "./rules/types.js";
 import { normalizeInput } from "./core/normalize.js";
 import { parseArabicDecimal, parseNumber } from "./core/parseNumber.js";
 import { readNumberTokens } from "./core/readNumberTokens.js";
@@ -223,13 +231,18 @@ function isTaiExpressionFragment(fragment: string): boolean {
   return detectTaiExpression(normalizeInput(fragment)) !== null;
 }
 
-function replaceInTextWithRules(input: string, rules: RuleBundle, options?: ReadOptions): string {
+function replaceInTextDetailedWithRules(input: string, rules: RuleBundle, options?: ReadOptions): ReplaceResult {
   if (input.length === 0) {
-    return input;
+    return {
+      input,
+      output: input,
+      replacements: [],
+    };
   }
   const markers = collectReplaceMarkers(rules);
   let out = "";
   let index = 0;
+  const replacements: ReplaceResult["replacements"] = [];
   while (index < input.length) {
     const ch = input[index];
     if (!CANDIDATE_START_RE.test(ch)) {
@@ -240,6 +253,7 @@ function replaceInTextWithRules(input: string, rules: RuleBundle, options?: Read
 
     const maxEnd = Math.min(input.length, index + MAX_REPLACE_SPAN);
     let matchedReading: string | undefined;
+    let matchedSource: string | undefined;
     let matchedEnd = index;
     for (let end = maxEnd; end > index; end -= 1) {
       const fragment = input.slice(index, end);
@@ -259,12 +273,19 @@ function replaceInTextWithRules(input: string, rules: RuleBundle, options?: Read
         continue;
       }
       matchedReading = reading.reading;
+      matchedSource = fragment;
       matchedEnd = end;
       break;
     }
 
     if (matchedReading !== undefined) {
       out += matchedReading;
+      replacements.push({
+        start: index,
+        end: matchedEnd,
+        source: matchedSource ?? input.slice(index, matchedEnd),
+        reading: matchedReading,
+      });
       index = matchedEnd;
       continue;
     }
@@ -272,7 +293,15 @@ function replaceInTextWithRules(input: string, rules: RuleBundle, options?: Read
     out += ch;
     index += 1;
   }
-  return out;
+  return {
+    input,
+    output: out,
+    replacements,
+  };
+}
+
+function replaceInTextWithRules(input: string, rules: RuleBundle, options?: ReadOptions): string {
+  return replaceInTextDetailedWithRules(input, rules, options).output;
 }
 
 function resolveCounterCompose(rules: RuleBundle, counterId: string, options?: ReadOptions) {
@@ -498,6 +527,9 @@ function createYomiJaWithRules(rules: RuleBundle): YomiJa {
     replaceInText(input, options) {
       return replaceInTextWithRules(input, rules, options);
     },
+    replaceInTextDetailed(input, options) {
+      return replaceInTextDetailedWithRules(input, rules, options);
+    },
   };
 }
 
@@ -522,6 +554,10 @@ export function readNumber(value: bigint, options?: ReadOptions): string {
 
 export function replaceInText(input: string, options?: ReadOptions): string {
   return yomiJa.replaceInText(input, options);
+}
+
+export function replaceInTextDetailed(input: string, options?: ReadOptions): ReplaceResult {
+  return yomiJa.replaceInTextDetailed(input, options);
 }
 
 export default yomiJa;

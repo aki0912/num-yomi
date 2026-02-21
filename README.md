@@ -55,10 +55,20 @@ node dist/cli/yomi.js "$100"
 node dist/cli/yomi.js "今日は第3版を1.2本買った" --replace
 ```
 
+変換箇所レポート付きのファイル変換:
+
+```bash
+node dist/cli/yomi-file.js ./input.txt --out ./output.txt
+```
+
+- 標準出力: 変換された部分だけ（位置 + `source -> reading`）
+- `--out`: 変換後テキストを保存
+- `--json`: 変換箇所を JSON で出力
+
 ## ライブラリ API
 
 ```ts
-import yomiJa, { read, replaceInText, createYomiJa } from "./dist/index.js";
+import yomiJa, { read, replaceInText, replaceInTextDetailed, createYomiJa } from "./dist/index.js";
 
 const a = yomiJa.read("¥300");
 // => さんびゃくえん
@@ -84,6 +94,13 @@ const f = custom.read("$100");
 
 const g = replaceInText("今日は第3版を1.2本買った");
 // => 今日はだいさんはんをいってんにほん買った
+
+const h = replaceInTextDetailed("今日は第3版を1.2本買った");
+// => {
+//   input,
+//   output,
+//   replacements: [{ start, end, source, reading }, ...]
+// }
 ```
 
 ### API 仕様
@@ -93,6 +110,7 @@ const g = replaceInText("今日は第3版を1.2本買った");
 - `readDetailed(input, options?)` -> 詳細オブジェクト or `null`
 - `readNumber(bigint, options?)` -> `string`
 - `replaceInText(input, options?)` -> `string`
+- `replaceInTextDetailed(input, options?)` -> `{ input, output, replacements[] }`
 
 `options`:
 

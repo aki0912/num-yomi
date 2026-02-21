@@ -371,6 +371,12 @@ struct CounterMatch<'a> {
 }
 
 #[derive(Clone, Copy)]
+struct TaiExpression<'a> {
+    left: &'a str,
+    right: &'a str,
+}
+
+#[derive(Clone, Copy)]
 struct CounterPrefixMatch {
     marker: &'static str,
     reading: Tokens,
@@ -682,6 +688,10 @@ fn read_with_options(
     rules: &RuntimeRules,
 ) -> Result<Option<String>, String> {
     let normalized = normalize_input(input);
+    if let Some(tai_tokens) = read_tai_expression_tokens(&normalized, options, rules)? {
+        return Ok(Some(join_tokens(&tai_tokens)));
+    }
+
     let mut prefix: Option<CounterPrefixMatch> = None;
     let mut postfix: Option<CounterPostfixMatch> = None;
     let mut counter_input = normalized.as_str();
@@ -781,7 +791,11 @@ fn replace_in_text_with_options(input: &str, options: &ReadOptions, rules: &Runt
                 continue;
             }
             if !contains_marker(fragment, markers) {
-                continue;
+                if !should_convert_bare_number_fragment(input, start_byte, end_byte, fragment)
+                    && !is_tai_expression_fragment(fragment)
+                {
+                    continue;
+                }
             }
 
             if let Ok(Some(reading)) = read_with_options(fragment, options, rules) {
@@ -860,6 +874,27 @@ fn has_replace_trigger(input: &str) -> bool {
             || ch == '第'
             || ch.is_ascii_digit()
             || ('０'..='９').contains(&ch)
+            || matches!(
+                ch,
+                '零'
+                    | '〇'
+                    | '一'
+                    | '二'
+                    | '三'
+                    | '四'
+                    | '五'
+                    | '六'
+                    | '七'
+                    | '八'
+                    | '九'
+                    | '十'
+                    | '百'
+                    | '千'
+                    | '万'
+                    | '億'
+                    | '兆'
+                    | '京'
+            )
     })
 }
 
@@ -931,6 +966,134 @@ fn is_candidate_start(ch: char) -> bool {
 
 fn has_parsable_number_text(input: &str) -> bool {
     parse_decimal(input).is_some() || parse_number(input).is_some()
+}
+
+fn detect_tai_expression(input: &str) -> Option<TaiExpression<'_>> {
+    let split_at = input.find('対')?;
+    if split_at == 0 {
+        return None;
+    }
+
+    let right_start = split_at + '対'.len_utf8();
+    if right_start >= input.len() {
+        return None;
+    }
+    if input[right_start..].contains('対') {
+        return None;
+    }
+
+    let left = &input[..split_at];
+    let right = &input[right_start..];
+    if !has_parsable_number_text(left) || !has_parsable_number_text(right) {
+        return None;
+    }
+
+    Some(TaiExpression { left, right })
+}
+
+fn read_number_text_tokens(
+    number_text: &str,
+    core: &CoreRules,
+    options: &ReadOptions,
+) -> Result<Option<TokenBuf>, String> {
+    if let Some(decimal) = parse_decimal(number_text) {
+        return Ok(Some(read_decimal_tokens(&decimal, core, options)?));
+    }
+
+    let Some(number_value) = parse_number(number_text) else {
+        return Ok(None);
+    };
+    Ok(Some(read_number_tokens(&number_value, core, options)?))
+}
+
+fn normalize_tai_left_tokens(tokens: &mut TokenBuf) {
+    if let Some(last) = tokens.last_mut() {
+        if *last == "いち" {
+            *last = "いっ";
+        }
+    }
+}
+
+fn read_tai_expression_tokens(
+    input: &str,
+    options: &ReadOptions,
+    rules: &RuntimeRules,
+) -> Result<Option<TokenBuf>, String> {
+    let Some(expr) = detect_tai_expression(input) else {
+        return Ok(None);
+    };
+
+    let Some(mut left_tokens) = read_number_text_tokens(expr.left, rules.core, options)? else {
+        return Ok(None);
+    };
+    let Some(right_tokens) = read_number_text_tokens(expr.right, rules.core, options)? else {
+        return Ok(None);
+    };
+
+    normalize_tai_left_tokens(&mut left_tokens);
+    let mut tokens = TokenBuf::with_capacity(left_tokens.len() + 1 + right_tokens.len());
+    tokens.extend(left_tokens);
+    tokens.push("たい");
+    tokens.extend(right_tokens);
+    Ok(Some(tokens))
+}
+
+fn is_tai_expression_fragment(fragment: &str) -> bool {
+    let normalized = normalize_input(fragment);
+    detect_tai_expression(&normalized).is_some()
+}
+
+fn should_convert_bare_number_fragment(
+    input: &str,
+    start_byte: usize,
+    end_byte: usize,
+    fragment: &str,
+) -> bool {
+    let normalized = normalize_input(fragment);
+    if !has_parsable_number_text(&normalized) {
+        return false;
+    }
+
+    let before = if start_byte > 0 {
+        input[..start_byte].chars().next_back()
+    } else {
+        None
+    };
+    let after = if end_byte < input.len() {
+        input[end_byte..].chars().next()
+    } else {
+        None
+    };
+    if is_ascii_alphanumeric(before) || is_ascii_alphanumeric(after) {
+        return false;
+    }
+
+    if is_single_kanji_digit(&normalized) && (is_han_char(before) || is_han_char(after)) {
+        return false;
+    }
+
+    true
+}
+
+fn is_ascii_alphanumeric(ch: Option<char>) -> bool {
+    match ch {
+        Some(c) => c.is_ascii_alphanumeric(),
+        None => false,
+    }
+}
+
+fn is_han_char(ch: Option<char>) -> bool {
+    match ch {
+        Some(c) => matches!(c as u32, 0x3400..=0x4DBF | 0x4E00..=0x9FFF | 0xF900..=0xFAFF),
+        None => false,
+    }
+}
+
+fn is_single_kanji_digit(input: &str) -> bool {
+    matches!(
+        input,
+        "零" | "〇" | "一" | "二" | "三" | "四" | "五" | "六" | "七" | "八" | "九"
+    )
 }
 
 fn detect_counter_with_parsable_number<'a>(

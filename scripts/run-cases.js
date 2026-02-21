@@ -37,6 +37,25 @@ for (const item of replaceCases) {
   console.log(`OK replace ${item.in} => ${actual}`);
 }
 
+const detailed = yomi.replaceInTextDetailed("今日は第3版を1.2本買った");
+if (detailed.output !== "今日はだいさんはんをいってんにほん買った") {
+  fail += 1;
+  console.error(
+    `FAIL replaceDetailed output\n  expected=今日はだいさんはんをいってんにほん買った\n  actual=${detailed.output}`
+  );
+} else if (
+  detailed.replacements.length !== 2
+  || detailed.replacements[0]?.source !== "第3版"
+  || detailed.replacements[0]?.reading !== "だいさんはん"
+  || detailed.replacements[1]?.source !== "1.2本"
+  || detailed.replacements[1]?.reading !== "いってんにほん"
+) {
+  fail += 1;
+  console.error(`FAIL replaceDetailed replacements\n  actual=${JSON.stringify(detailed.replacements)}`);
+} else {
+  console.log("OK replaceDetailed 今日は第3版を1.2本買った");
+}
+
 if (fail > 0) {
   console.error(`\n${fail} cases failed.`);
   process.exit(1);
