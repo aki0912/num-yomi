@@ -36,14 +36,14 @@
     "bench:rust:call": "cargo run --quiet --release --manifest-path rust_impl/Cargo.toml --bin bench_call -- --cases test/cases.json --iterations 20000",
     "bench:rust:replace:call": "cargo run --quiet --release --manifest-path rust_impl/Cargo.toml --bin bench_replace_call -- --cases test/replace_cases.json --iterations 20000",
     "bench:compare": "python3 scripts/compare_benchmarks.py --call-style --cases test/cases.json --iterations 20000",
-    "bench:compare:replace": "python3 scripts/compare_benchmarks.py --call-style --replace-style --cases test/replace_cases.json --iterations 20000"
+    "bench:compare:replace": "python3 scripts/compare_benchmarks.py --call-style --replace-style --cases test/replace_cases.json --iterations 20000",
+    "bench:update-readme": "python3 scripts/update_readme_benchmarks.py --runs 5 --iterations 20000"
   },
   "engines": {
     "node": ">=20"
   },
-  "dependencies": {},
   "devDependencies": {
-    "typescript": "^5.6.3",
-    "@types/node": "^22.10.2"
+    "@types/node": "^25.3.0",
+    "typescript": "^5.6.3"
   }
 }

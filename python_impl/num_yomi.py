@@ -988,12 +988,11 @@ class YomiJaPy:
                         input_text, index, end, fragment
                     ) and not is_tai_expression_fragment(fragment):
                         continue
-                reading = self.read(fragment, contextual_options)
-                if reading is None:
-                    continue
-                matched_reading = reading
                 detailed = self.read_detailed(fragment, contextual_options)
-                if detailed is not None and isinstance(detailed.get("counterId"), str):
+                if detailed is None:
+                    continue
+                matched_reading = detailed["reading"]
+                if isinstance(detailed.get("counterId"), str):
                     matched_counter_id = detailed["counterId"]
                 matched_end = end
                 break
@@ -1235,7 +1234,7 @@ def parse_modes(mode_args: List[str]) -> Dict[str, str]:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Python implementation for japanese-number-reading")
+    parser = argparse.ArgumentParser(description="Python implementation for num-yomi")
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     read_parser = subparsers.add_parser("read", help="Read one input")

@@ -24,8 +24,7 @@ const COUNTER_POSTFIXES = [
   { marker: "め", reading: ["め"] },
 ] as const;
 const KANJI_NUMERIC_CHARS = new Set(["零", "〇", "一", "二", "三", "四", "五", "六", "七", "八", "九", "十", "百", "千", "万", "億", "兆", "京"]);
-const REPLACE_TRIGGER_RE = /[0-9０-９$¥￥第零〇一二三四五六七八九十百千万億兆京]/;
-const CANDIDATE_START_RE = /[0-9０-９+\-＋－$¥￥第零〇一二三四五六七八九十百千万億兆京]/;
+const CANDIDATE_EXTRA_START_CHARS = new Set(["+", "-", "＋", "－", "$", "¥", "￥", "第"]);
 const MAX_REPLACE_SPAN = 64;
 const SINGLE_KANJI_DIGIT_RE = /^[零〇一二三四五六七八九]$/u;
 const HAN_CHAR_RE = /\p{Script=Han}/u;
@@ -236,6 +235,13 @@ function containsNumericChar(text: string): boolean {
   return false;
 }
 
+function isCandidateStartChar(ch: string | undefined): boolean {
+  if (!ch) {
+    return false;
+  }
+  return KANJI_NUMERIC_CHARS.has(ch) || CANDIDATE_EXTRA_START_CHARS.has(ch) || ((ch >= "0" && ch <= "9") || (ch >= "０" && ch <= "９"));
+}
+
 function containsMarker(text: string, markers: string[]): boolean {
   for (const marker of markers) {
     if (text.includes(marker)) {
@@ -384,7 +390,13 @@ function readMonthDayExpressionTokens(
   };
 }
 
-function replaceInTextDetailedWithRules(input: string, rules: RuleBundle, markers: string[], options?: ReadOptions): ReplaceResult {
+function replaceInTextCoreWithRules(
+  input: string,
+  rules: RuleBundle,
+  markers: string[],
+  options: ReadOptions | undefined,
+  includeDetails: boolean
+): ReplaceResult {
   if (input.length === 0) {
     return {
       input,
@@ -396,10 +408,10 @@ function replaceInTextDetailedWithRules(input: string, rules: RuleBundle, marker
   let index = 0;
   let previousCounterId: string | undefined;
   let previousReplacementEnd = -1;
-  const replacements: ReplaceResult["replacements"] = [];
+  const replacements: ReplaceResult["replacements"] | undefined = includeDetails ? [] : undefined;
   while (index < input.length) {
     const ch = input[index];
-    if (!CANDIDATE_START_RE.test(ch)) {
+    if (!isCandidateStartChar(ch)) {
       out += ch;
       index += 1;
       continue;
@@ -420,9 +432,6 @@ function replaceInTextDetailedWithRules(input: string, rules: RuleBundle, marker
     for (let end = maxEnd; end > index; end -= 1) {
       const fragment = input.slice(index, end);
       if (TRAILING_WHITESPACE_RE.test(fragment)) {
-        continue;
-      }
-      if (!REPLACE_TRIGGER_RE.test(fragment)) {
         continue;
       }
       if (!containsNumericChar(fragment)) {
@@ -446,12 +455,14 @@ function replaceInTextDetailedWithRules(input: string, rules: RuleBundle, marker
 
     if (matchedReading !== undefined) {
       out += matchedReading;
-      replacements.push({
-        start: index,
-        end: matchedEnd,
-        source: matchedSource ?? input.slice(index, matchedEnd),
-        reading: matchedReading,
-      });
+      if (replacements) {
+        replacements.push({
+          start: index,
+          end: matchedEnd,
+          source: matchedSource ?? input.slice(index, matchedEnd),
+          reading: matchedReading,
+        });
+      }
       previousCounterId = matchedCounterId;
       previousReplacementEnd = matchedEnd;
       index = matchedEnd;
@@ -464,75 +475,16 @@ function replaceInTextDetailedWithRules(input: string, rules: RuleBundle, marker
   return {
     input,
     output: out,
-    replacements,
+    replacements: replacements ?? [],
   };
 }
 
+function replaceInTextDetailedWithRules(input: string, rules: RuleBundle, markers: string[], options?: ReadOptions): ReplaceResult {
+  return replaceInTextCoreWithRules(input, rules, markers, options, true);
+}
+
 function replaceInTextWithRules(input: string, rules: RuleBundle, markers: string[], options?: ReadOptions): string {
-  if (input.length === 0) {
-    return input;
-  }
-  let out = "";
-  let index = 0;
-  let previousCounterId: string | undefined;
-  let previousReplacementEnd = -1;
-  while (index < input.length) {
-    const ch = input[index];
-    if (!CANDIDATE_START_RE.test(ch)) {
-      out += ch;
-      index += 1;
-      continue;
-    }
-
-    const maxEnd = Math.min(input.length, index + MAX_REPLACE_SPAN);
-    let matchedReading: string | undefined;
-    let matchedCounterId: string | undefined;
-    let matchedEnd = index;
-    const contextualOptions = resolveReadOptionsForReplaceFragment(
-      input,
-      index,
-      previousCounterId,
-      previousReplacementEnd,
-      options
-    );
-    for (let end = maxEnd; end > index; end -= 1) {
-      const fragment = input.slice(index, end);
-      if (TRAILING_WHITESPACE_RE.test(fragment)) {
-        continue;
-      }
-      if (!REPLACE_TRIGGER_RE.test(fragment)) {
-        continue;
-      }
-      if (!containsNumericChar(fragment)) {
-        continue;
-      }
-      if (!containsMarker(fragment, markers)) {
-        if (!shouldConvertBareNumberFragment(input, index, end, fragment) && !isTaiExpressionFragment(fragment)) {
-          continue;
-        }
-      }
-      const reading = toReading(fragment, rules, contextualOptions);
-      if (!reading) {
-        continue;
-      }
-      matchedReading = reading.reading;
-      matchedCounterId = reading.counterId;
-      matchedEnd = end;
-      break;
-    }
-
-    if (matchedReading !== undefined) {
-      out += matchedReading;
-      previousCounterId = matchedCounterId;
-      previousReplacementEnd = matchedEnd;
-      index = matchedEnd;
-      continue;
-    }
-
-    out += ch;
-    index += 1;
-  }
-  return out;
+  return replaceInTextCoreWithRules(input, rules, markers, options, false).output;
 }
 
 function resolveCounterCompose(rules: RuleBundle, counterId: string, options?: ReadOptions) {

@@ -1,0 +1,48 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - "**"
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "pnpm"
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Run Node tests
+        run: pnpm test
+
+      - name: Verify Python parity (read)
+        run: python3 bench/bench_python_call.py --cases test/cases.json --iterations 1 > /dev/null
+
+      - name: Verify Python parity (replace)
+        run: python3 bench/bench_python_replace_call.py --cases test/replace_cases.json --iterations 1 > /dev/null
+
+      - name: Verify Rust parity (read)
+        run: cargo run --quiet --manifest-path rust_impl/Cargo.toml --bin bench_call -- --cases test/cases.json --iterations 1 > /dev/null
+
+      - name: Verify Rust parity (replace)
+        run: cargo run --quiet --manifest-path rust_impl/Cargo.toml --bin bench_replace_call -- --cases test/replace_cases.json --iterations 1 > /dev/null

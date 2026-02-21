@@ -1,4 +1,4 @@
-# japanese-number-reading
+# num-yomi
 
 日本語の数値・漢数字・助数詞を、ひらがなの読みに変換する TypeScript ライブラリです。
 
@@ -429,6 +429,12 @@ pnpm bench:python
 pnpm bench:rust
 ```
 
+README の計測結果を自動更新:
+
+```bash
+pnpm bench:update-readme
+```
+
 計測環境（2026-02-21 時点）:
 
 - Node.js: `v25.6.1`
@@ -439,13 +445,13 @@ pnpm bench:rust
 直近計測結果（2026-02-21, `--iterations 20000`, 5回計測レンジ）:
 
 - `pnpm bench:compare`（call-style）
-  - Node: `41.330 - 45.726 ms`（平均 `42.433 ms`）
-  - Python: `377.528 - 398.253 ms`（平均 `385.414 ms`）
-  - Rust: `26.499 - 30.558 ms`（平均 `27.856 ms`）
+  - Node: `43.127 - 49.882 ms`（平均 `44.968 ms`）
+  - Python: `382.947 - 405.857 ms`（平均 `394.492 ms`）
+  - Rust: `19.666 - 31.475 ms`（平均 `23.977 ms`）
 - `pnpm bench:compare:replace`
-  - Node: `14.604 - 15.145 ms`（平均 `14.917 ms`）
-  - Python: `88.806 - 91.319 ms`（平均 `89.674 ms`）
-  - Rust: `5.027 - 5.465 ms`（平均 `5.346 ms`）
+  - Node: `15.479 - 16.471 ms`（平均 `15.839 ms`）
+  - Python: `90.648 - 92.702 ms`（平均 `91.958 ms`）
+  - Rust: `3.697 - 6.203 ms`（平均 `4.869 ms`）
 
 注: ベンチ結果はマシン負荷や実行タイミングで多少ぶれます。
 
