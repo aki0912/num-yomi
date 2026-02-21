@@ -10,6 +10,15 @@
         "suffixReading": ["えん"]
       }
     },
+    "dollar": {
+      "surface": {
+        "prefix": ["$"]
+      },
+      "compose": {
+        "type": "concat",
+        "suffixReading": ["どる"]
+      }
+    },
     "hon": {
       "surface": {
         "suffix": ["本"]
@@ -35,6 +44,296 @@
           "h": ["ひき"],
           "b": ["びき"],
           "p": ["ぴき"]
+        }
+      }
+    },
+    "sai": {
+      "surface": {
+        "suffix": ["歳"]
+      },
+      "compose": {
+        "type": "exceptions_first",
+        "exceptions": {
+          "1": ["いっ", "さい"],
+          "8": ["はっ", "さい"],
+          "10": ["じゅっ", "さい"],
+          "20": ["はたち"]
+        },
+        "fallback": {
+          "type": "concat",
+          "suffixReading": ["さい"]
+        }
+      }
+    },
+    "nin": {
+      "surface": {
+        "suffix": ["人"]
+      },
+      "compose": {
+        "type": "exceptions_first",
+        "exceptions": {
+          "1": ["ひとり"],
+          "2": ["ふたり"]
+        },
+        "fallback": {
+          "type": "concat",
+          "suffixReading": ["にん"]
+        }
+      }
+    },
+    "ko": {
+      "surface": {
+        "suffix": ["個"]
+      },
+      "compose": {
+        "type": "exceptions_first",
+        "exceptions": {
+          "1": ["いっ", "こ"],
+          "6": ["ろっ", "こ"],
+          "8": ["はっ", "こ"],
+          "10": ["じゅっ", "こ"]
+        },
+        "fallback": {
+          "type": "concat",
+          "suffixReading": ["こ"]
+        }
+      }
+    },
+    "mai": {
+      "surface": {
+        "suffix": ["枚"]
+      },
+      "compose": {
+        "type": "concat",
+        "suffixReading": ["まい"]
+      }
+    },
+    "satsu": {
+      "surface": {
+        "suffix": ["冊"]
+      },
+      "compose": {
+        "type": "exceptions_first",
+        "exceptions": {
+          "1": ["いっ", "さつ"],
+          "8": ["はっ", "さつ"],
+          "10": ["じゅっ", "さつ"]
+        },
+        "fallback": {
+          "type": "concat",
+          "suffixReading": ["さつ"]
+        }
+      }
+    },
+    "kai": {
+      "surface": {
+        "suffix": ["回"]
+      },
+      "compose": {
+        "type": "exceptions_first",
+        "exceptions": {
+          "1": ["いっ", "かい"],
+          "6": ["ろっ", "かい"],
+          "8": ["はっ", "かい"],
+          "10": ["じゅっ", "かい"]
+        },
+        "fallback": {
+          "type": "concat",
+          "suffixReading": ["かい"]
+        }
+      }
+    },
+    "hai": {
+      "surface": {
+        "suffix": ["杯"]
+      },
+      "compose": {
+        "type": "pattern",
+        "patternId": "h_row_3forms",
+        "forms": {
+          "h": ["はい"],
+          "b": ["ばい"],
+          "p": ["ぱい"]
+        }
+      }
+    },
+    "dai": {
+      "surface": {
+        "suffix": ["台"]
+      },
+      "compose": {
+        "type": "concat",
+        "suffixReading": ["だい"]
+      }
+    },
+    "ken": {
+      "surface": {
+        "suffix": ["軒"]
+      },
+      "compose": {
+        "type": "exceptions_first",
+        "exceptions": {
+          "1": ["いっ", "けん"],
+          "3": ["さん", "げん"],
+          "6": ["ろっ", "けん"],
+          "8": ["はっ", "けん"],
+          "10": ["じゅっ", "けん"]
+        },
+        "fallback": {
+          "type": "concat",
+          "suffixReading": ["けん"]
+        }
+      }
+    },
+    "tou": {
+      "surface": {
+        "suffix": ["頭"]
+      },
+      "compose": {
+        "type": "exceptions_first",
+        "exceptions": {
+          "1": ["いっ", "とう"],
+          "8": ["はっ", "とう"],
+          "10": ["じゅっ", "とう"]
+        },
+        "fallback": {
+          "type": "concat",
+          "suffixReading": ["とう"]
+        }
+      }
+    },
+    "wa": {
+      "surface": {
+        "suffix": ["羽"]
+      },
+      "compose": {
+        "type": "concat",
+        "suffixReading": ["わ"]
+      }
+    },
+    "gai": {
+      "surface": {
+        "suffix": ["階"]
+      },
+      "compose": {
+        "type": "exceptions_first",
+        "exceptions": {
+          "1": ["いっ", "かい"],
+          "3": ["さん", "がい"],
+          "6": ["ろっ", "かい"],
+          "8": ["はっ", "かい"],
+          "10": ["じゅっ", "かい"]
+        },
+        "fallback": {
+          "type": "concat",
+          "suffixReading": ["かい"]
+        }
+      }
+    },
+    "soku": {
+      "surface": {
+        "suffix": ["足"]
+      },
+      "compose": {
+        "type": "exceptions_first",
+        "exceptions": {
+          "1": ["いっ", "そく"],
+          "3": ["さん", "ぞく"],
+          "8": ["はっ", "そく"],
+          "10": ["じゅっ", "そく"]
+        },
+        "fallback": {
+          "type": "concat",
+          "suffixReading": ["そく"]
+        }
+      }
+    },
+    "chaku": {
+      "surface": {
+        "suffix": ["着"]
+      },
+      "compose": {
+        "type": "exceptions_first",
+        "exceptions": {
+          "1": ["いっ", "ちゃく"],
+          "8": ["はっ", "ちゃく"],
+          "10": ["じゅっ", "ちゃく"]
+        },
+        "fallback": {
+          "type": "concat",
+          "suffixReading": ["ちゃく"]
+        }
+      }
+    },
+    "kumi": {
+      "surface": {
+        "suffix": ["組"]
+      },
+      "compose": {
+        "type": "exceptions_first",
+        "exceptions": {
+          "1": ["ひと", "くみ"],
+          "2": ["ふた", "くみ"]
+        },
+        "fallback": {
+          "type": "concat",
+          "suffixReading": ["くみ"]
+        }
+      }
+    },
+    "hako": {
+      "surface": {
+        "suffix": ["箱"]
+      },
+      "compose": {
+        "type": "exceptions_first",
+        "exceptions": {
+          "1": ["ひと", "はこ"],
+          "2": ["ふた", "はこ"],
+          "3": ["さん", "ばこ"],
+          "6": ["ろっ", "ぱこ"],
+          "8": ["はっ", "ぱこ"],
+          "10": ["じゅっ", "ぱこ"]
+        },
+        "fallback": {
+          "type": "concat",
+          "suffixReading": ["はこ"]
+        }
+      }
+    },
+    "ban": {
+      "surface": {
+        "suffix": ["番"]
+      },
+      "compose": {
+        "type": "concat",
+        "suffixReading": ["ばん"]
+      }
+    },
+    "wa_story": {
+      "surface": {
+        "suffix": ["話"]
+      },
+      "compose": {
+        "type": "concat",
+        "suffixReading": ["わ"]
+      }
+    },
+    "kan": {
+      "surface": {
+        "suffix": ["巻"]
+      },
+      "compose": {
+        "type": "exceptions_first",
+        "exceptions": {
+          "1": ["いっ", "かん"],
+          "6": ["ろっ", "かん"],
+          "8": ["はっ", "かん"],
+          "10": ["じゅっ", "かん"]
+        },
+        "fallback": {
+          "type": "concat",
+          "suffixReading": ["かん"]
         }
       }
     },
