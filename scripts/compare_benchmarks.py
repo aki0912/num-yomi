@@ -205,6 +205,8 @@ def main() -> None:
             "--release",
             "--manifest-path",
             "rust_impl/Cargo.toml",
+            "--bin",
+            "yomi_rust",
             "--",
             "bench",
             "--cases",

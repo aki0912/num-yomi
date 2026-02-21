@@ -3,7 +3,7 @@ use std::fs;
 use std::path::PathBuf;
 use std::time::Instant;
 use yomi_rust::{
-    replace_in_text, FourVariantOpt, NineVariantOpt, ReadConfig, SevenVariantOpt, ZeroVariantOpt,
+    replace_in_text_shared, FourVariantOpt, NineVariantOpt, ReadConfig, SevenVariantOpt, ZeroVariantOpt,
 };
 
 #[derive(Debug)]
@@ -59,8 +59,8 @@ fn run() -> Result<(), String> {
     let mut total_ns: u128 = 0;
 
     for (index, case) in cases.iter().enumerate() {
-        let warmup = replace_in_text(&case.input, case.config.as_ref())?;
-        if warmup != case.expected {
+        let warmup = replace_in_text_shared(&case.input, case.config.as_ref())?;
+        if warmup.as_ref() != case.expected.as_str() {
             return Err(format!(
                 "Case mismatch at index {index}: in={} expected={} actual={}",
                 case.input, case.expected, warmup
@@ -69,7 +69,7 @@ fn run() -> Result<(), String> {
 
         let start = Instant::now();
         for _ in 0..iterations {
-            let _ = replace_in_text(&case.input, case.config.as_ref())?;
+            let _ = replace_in_text_shared(&case.input, case.config.as_ref())?;
         }
         let elapsed_ns = start.elapsed().as_nanos();
         total_ns += elapsed_ns;

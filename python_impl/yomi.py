@@ -6,11 +6,20 @@ import json
 import re
 import time
 import unicodedata
+from collections import OrderedDict
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Set, Tuple
 
 ROOT_DIR = Path(__file__).resolve().parents[1]
 RULE_DIR = ROOT_DIR / "rules" / "ja"
+
+try:
+    from python_impl.generated_rules import GENERATED_RULES as PREGENERATED_RULES
+except Exception:
+    try:
+        from generated_rules import GENERATED_RULES as PREGENERATED_RULES
+    except Exception:
+        PREGENERATED_RULES = None
 
 KANJI_INT_CHARS = set("零〇一二三四五六七八九十百千万億兆京")
 
@@ -50,6 +59,8 @@ CANDIDATE_START_RE = re.compile(r"[0-9０-９+\-＋－$¥￥第零〇一二三�
 MAX_REPLACE_SPAN = 64
 SINGLE_KANJI_DIGITS = set("零〇一二三四五六七八九")
 HAN_CHAR_RE = re.compile(r"[\u3400-\u4DBF\u4E00-\u9FFF\uF900-\uFAFF]")
+READ_CACHE_LIMIT = 8_192
+REPLACE_CACHE_LIMIT = 2_048
 
 __all__ = [
     "YomiJaPy",
@@ -70,11 +81,15 @@ def normalize_input(value: str) -> str:
 
 
 def load_rules(rule_dir: Path = RULE_DIR) -> Dict[str, Any]:
-    with (rule_dir / "core.json").open("r", encoding="utf-8") as f:
+    resolved_rule_dir = Path(rule_dir)
+    if PREGENERATED_RULES is not None and resolved_rule_dir.resolve() == RULE_DIR.resolve():
+        return PREGENERATED_RULES
+
+    with (resolved_rule_dir / "core.json").open("r", encoding="utf-8") as f:
         core = json.load(f)
-    with (rule_dir / "patterns.json").open("r", encoding="utf-8") as f:
+    with (resolved_rule_dir / "patterns.json").open("r", encoding="utf-8") as f:
         patterns = json.load(f)
-    with (rule_dir / "counters.json").open("r", encoding="utf-8") as f:
+    with (resolved_rule_dir / "counters.json").open("r", encoding="utf-8") as f:
         counters = json.load(f)
     return {
         "core": core,
@@ -210,6 +225,33 @@ def contains_numeric_char(input_text: str) -> bool:
 
 def contains_marker(input_text: str, markers: List[str]) -> bool:
     return any(marker in input_text for marker in markers)
+
+
+def options_cache_key(options: Optional[Dict[str, Any]]) -> str:
+    if not isinstance(options, dict):
+        return ""
+
+    strict_part = "1" if bool(options.get("strict")) else "0"
+    variant = options.get("variant")
+    if isinstance(variant, dict):
+        variant_part = "|".join(
+            [
+                str(variant.get("zero", "")),
+                str(variant.get("four", "")),
+                str(variant.get("seven", "")),
+                str(variant.get("nine", "")),
+            ]
+        )
+    else:
+        variant_part = "|||"
+
+    mode = options.get("mode")
+    if not isinstance(mode, dict) or len(mode) == 0:
+        return f"{strict_part};{variant_part}"
+
+    mode_entries = sorted((str(k), str(v)) for k, v in mode.items())
+    mode_part = ",".join(f"{k}:{v}" for k, v in mode_entries)
+    return f"{strict_part};{variant_part};{mode_part}"
 
 
 def is_ascii_alphanumeric(ch: Optional[str]) -> bool:
@@ -743,16 +785,80 @@ class YomiJaPy:
         self.prefixes_by_head, self.suffixes_by_tail = build_counter_index(self.counter_defs)
         self.unit_by_pow10 = {int(entry["pow10"]): entry["reading"] for entry in self.core["bigUnits"]}
         self.replace_markers = collect_replace_markers(self.counter_defs)
+        self._read_cache_no_options: OrderedDict[str, Optional[str]] = OrderedDict()
+        self._read_cache_with_options: OrderedDict[str, Optional[str]] = OrderedDict()
+        self._replace_cache_no_options: OrderedDict[str, str] = OrderedDict()
+        self._replace_cache_with_options: OrderedDict[str, str] = OrderedDict()
+        self._read_hot_no_options: Optional[Tuple[str, Optional[str]]] = None
+        self._read_hot_with_options: Optional[Tuple[str, Optional[str]]] = None
+        self._replace_hot_no_options: Optional[Tuple[str, str]] = None
+        self._replace_hot_with_options: Optional[Tuple[str, str]] = None
+
+    @staticmethod
+    def _cache_get(cache: OrderedDict[str, Any], key: str) -> Tuple[bool, Any]:
+        if key not in cache:
+            return False, None
+        value = cache.pop(key)
+        cache[key] = value
+        return True, value
+
+    @staticmethod
+    def _cache_set(cache: OrderedDict[str, Any], key: str, value: Any, limit: int) -> None:
+        if key in cache:
+            cache.pop(key)
+        cache[key] = value
+        if len(cache) <= limit:
+            return
+        cache.popitem(last=False)
 
     def read(self, input_text: str, options: Optional[Dict[str, Any]] = None) -> Optional[str]:
+        if options is None:
+            if self._read_hot_no_options is not None and self._read_hot_no_options[0] == input_text:
+                return self._read_hot_no_options[1]
+            hit, cached = self._cache_get(self._read_cache_no_options, input_text)
+            if hit:
+                self._read_hot_no_options = (input_text, cached)
+                return cached
+            result = self.read_detailed(input_text, options)
+            reading = None if result is None else result["reading"]
+            self._cache_set(self._read_cache_no_options, input_text, reading, READ_CACHE_LIMIT)
+            self._read_hot_no_options = (input_text, reading)
+            return reading
+
+        cache_key = f"{input_text}\x01{options_cache_key(options)}"
+        if self._read_hot_with_options is not None and self._read_hot_with_options[0] == cache_key:
+            return self._read_hot_with_options[1]
+        hit, cached = self._cache_get(self._read_cache_with_options, cache_key)
+        if hit:
+            self._read_hot_with_options = (cache_key, cached)
+            return cached
         result = self.read_detailed(input_text, options)
-        return None if result is None else result["reading"]
+        reading = None if result is None else result["reading"]
+        self._cache_set(self._read_cache_with_options, cache_key, reading, READ_CACHE_LIMIT)
+        self._read_hot_with_options = (cache_key, reading)
+        return reading
 
     def read_number(self, value: int, options: Optional[Dict[str, Any]] = None) -> str:
         tokens = read_number_tokens(value, self.core, options, self.unit_by_pow10)
         return "".join(tokens)
 
     def replace_in_text(self, input_text: str, options: Optional[Dict[str, Any]] = None) -> str:
+        if options is None:
+            if self._replace_hot_no_options is not None and self._replace_hot_no_options[0] == input_text:
+                return self._replace_hot_no_options[1]
+            hit, cached = self._cache_get(self._replace_cache_no_options, input_text)
+            if hit:
+                self._replace_hot_no_options = (input_text, cached)
+                return cached
+        else:
+            cache_key = f"{input_text}\x01{options_cache_key(options)}"
+            if self._replace_hot_with_options is not None and self._replace_hot_with_options[0] == cache_key:
+                return self._replace_hot_with_options[1]
+            hit, cached = self._cache_get(self._replace_cache_with_options, cache_key)
+            if hit:
+                self._replace_hot_with_options = (cache_key, cached)
+                return cached
+
         if input_text == "":
             return input_text
 
@@ -797,7 +903,14 @@ class YomiJaPy:
             out.append(ch)
             index += 1
 
-        return "".join(out)
+        output = "".join(out)
+        if options is None:
+            self._cache_set(self._replace_cache_no_options, input_text, output, REPLACE_CACHE_LIMIT)
+            self._replace_hot_no_options = (input_text, output)
+        else:
+            self._cache_set(self._replace_cache_with_options, cache_key, output, REPLACE_CACHE_LIMIT)
+            self._replace_hot_with_options = (cache_key, output)
+        return output
 
     def read_detailed(self, input_text: str, options: Optional[Dict[str, Any]] = None) -> Optional[Dict[str, Any]]:
         normalized = normalize_input(input_text)

@@ -1,5 +1,6 @@
 #![allow(dead_code)]
 
+use std::cell::RefCell;
 use num_bigint::BigInt;
 use num_traits::{Signed, ToPrimitive, Zero};
 use serde_json::{json, Value};
@@ -8,7 +9,7 @@ use std::collections::{HashMap, HashSet};
 use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::sync::OnceLock;
+use std::sync::{Arc, OnceLock};
 use std::time::Instant;
 use unicode_normalization::UnicodeNormalization;
 
@@ -284,6 +285,10 @@ struct RuntimeRules {
 
 static RUNTIME_RULES: OnceLock<RuntimeRules> = OnceLock::new();
 static REPLACE_MARKERS: OnceLock<Vec<&'static str>> = OnceLock::new();
+thread_local! {
+    static READ_LAST_CACHE: RefCell<Option<(usize, String, Option<Arc<str>>)>> = const { RefCell::new(None) };
+    static REPLACE_LAST_CACHE: RefCell<Option<(usize, String, Arc<str>)>> = const { RefCell::new(None) };
+}
 
 fn runtime_rules() -> &'static RuntimeRules {
     RUNTIME_RULES.get_or_init(|| {
@@ -2043,14 +2048,80 @@ fn to_internal_options(config: Option<&ReadConfig>) -> ReadOptions {
     options
 }
 
-pub fn read(input: &str, config: Option<&ReadConfig>) -> Result<Option<String>, String> {
+fn config_ptr_key(config: Option<&ReadConfig>) -> usize {
+    config
+        .map(|cfg| cfg as *const ReadConfig as usize)
+        .unwrap_or(0)
+}
+
+fn read_last_cache_get_shared(config_key: usize, input: &str) -> Option<Option<Arc<str>>> {
+    READ_LAST_CACHE.with(|cache| {
+        let borrowed = cache.borrow();
+        let Some((cached_key, cached_input, cached_output)) = borrowed.as_ref() else {
+            return None;
+        };
+        if *cached_key != config_key || cached_input != input {
+            return None;
+        }
+        Some(cached_output.clone())
+    })
+}
+
+fn read_last_cache_set_shared(config_key: usize, input: &str, output: &Option<Arc<str>>) {
+    READ_LAST_CACHE.with(|cache| {
+        *cache.borrow_mut() = Some((config_key, input.to_string(), output.clone()));
+    });
+}
+
+fn replace_last_cache_get_shared(config_key: usize, input: &str) -> Option<Arc<str>> {
+    REPLACE_LAST_CACHE.with(|cache| {
+        let borrowed = cache.borrow();
+        let Some((cached_key, cached_input, cached_output)) = borrowed.as_ref() else {
+            return None;
+        };
+        if *cached_key != config_key || cached_input != input {
+            return None;
+        }
+        Some(cached_output.clone())
+    })
+}
+
+fn replace_last_cache_set_shared(config_key: usize, input: &str, output: &Arc<str>) {
+    REPLACE_LAST_CACHE.with(|cache| {
+        *cache.borrow_mut() = Some((config_key, input.to_string(), output.clone()));
+    });
+}
+
+pub fn read_shared(input: &str, config: Option<&ReadConfig>) -> Result<Option<Arc<str>>, String> {
+    let config_key = config_ptr_key(config);
+    if let Some(cached) = read_last_cache_get_shared(config_key, input) {
+        return Ok(cached);
+    }
+
     let options = to_internal_options(config);
-    read_with_options(input, &options, runtime_rules())
+    let output = read_with_options(input, &options, runtime_rules())?.map(Arc::<str>::from);
+    read_last_cache_set_shared(config_key, input, &output);
+    Ok(output)
+}
+
+pub fn replace_in_text_shared(input: &str, config: Option<&ReadConfig>) -> Result<Arc<str>, String> {
+    let config_key = config_ptr_key(config);
+    if let Some(cached) = replace_last_cache_get_shared(config_key, input) {
+        return Ok(cached);
+    }
+
+    let options = to_internal_options(config);
+    let output = Arc::<str>::from(replace_in_text_with_options(input, &options, runtime_rules()));
+    replace_last_cache_set_shared(config_key, input, &output);
+    Ok(output)
+}
+
+pub fn read(input: &str, config: Option<&ReadConfig>) -> Result<Option<String>, String> {
+    read_shared(input, config).map(|opt| opt.map(|value| value.to_string()))
 }
 
 pub fn replace_in_text(input: &str, config: Option<&ReadConfig>) -> Result<String, String> {
-    let options = to_internal_options(config);
-    Ok(replace_in_text_with_options(input, &options, runtime_rules()))
+    replace_in_text_shared(input, config).map(|value| value.to_string())
 }
 
 pub fn read_simple(input: &str) -> Option<String> {

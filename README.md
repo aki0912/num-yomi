@@ -36,6 +36,8 @@ pnpm build
 pnpm test
 ```
 
+`pnpm build` の前に `scripts/generate_rules_artifacts.py` が走り、Node/Python向けの生成ルール（`src/generated/rules_bundle.ts`, `python_impl/generated_rules.py`）を更新します。
+
 ## CLI で使う
 
 ```bash

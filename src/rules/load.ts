@@ -3,6 +3,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import type { RuleBundle } from "./types.js";
 import { validateRuleBundle } from "./validate.js";
+import { GENERATED_RULE_BUNDLE } from "../generated/rules_bundle.js";
 
 function resolveDefaultRuleDir(): string {
   const here = path.dirname(fileURLToPath(import.meta.url));
@@ -23,7 +24,15 @@ function resolveDefaultRuleDir(): string {
 
 const DEFAULT_RULE_DIR = resolveDefaultRuleDir();
 
+function isDefaultRuleDir(ruleDir: string): boolean {
+  return path.resolve(ruleDir) === path.resolve(DEFAULT_RULE_DIR);
+}
+
 export function loadRules(ruleDir = DEFAULT_RULE_DIR): RuleBundle {
+  if (isDefaultRuleDir(ruleDir)) {
+    return GENERATED_RULE_BUNDLE;
+  }
+
   const corePath = path.join(ruleDir, "core.json");
   const patternsPath = path.join(ruleDir, "patterns.json");
   const countersPath = path.join(ruleDir, "counters.json");

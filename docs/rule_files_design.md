@@ -15,9 +15,10 @@
 
 実装側は Node / Python / Rust の3系統ですが、ルールのソースは共通です。
 
-- Node: `src/index.ts` が `rules/ja/*.json` をロードして実行
-- Python: `python_impl/yomi.py` が `rules/ja/*.json` をロードして実行
-- Rust: `rust_impl/build.rs` がビルド時に `rules/ja/*.json` から `generated_rules.rs` を生成
+- Node: ビルド前生成で `src/generated/rules_bundle.ts` を作成して利用（デフォルト時）
+- Python: ビルド前生成で `python_impl/generated_rules.py` を作成して利用（デフォルト時）
+- Rust: `rust_impl/build.rs` がビルド時に `generated_rules.rs` を生成して利用
+- 共通: カスタム `ruleDir` を指定した場合は JSON を直接ロード
 
 ## 2. `core.json` の責務
 
@@ -169,7 +170,8 @@
 - ルールバリデーションは現在最小限（`src/rules/validate.ts`）。
 - 読みはトークン配列で管理し、最後に連結する設計。
 - 小数 + 助数詞は `compose` が小数を解決できる場合のみ成立する。
-- Node/Python は JSON を実行時ロード、Rust はビルド時変換なので、Rust はビルドを通すまで反映されない。
+- Node/Python/Rust すべて、デフォルト利用時は「生成物」を参照するため、ルール変更後はビルドが必要。
+- カスタム `ruleDir` を明示した場合のみ、Node/Python は JSON 直接ロードで反映される。
 
 ## 10. 関連ファイル
 

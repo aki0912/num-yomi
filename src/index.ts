@@ -29,6 +29,9 @@ const CANDIDATE_START_RE = /[0-9０-９+\-＋－$¥￥第零〇一二三四五�
 const MAX_REPLACE_SPAN = 64;
 const SINGLE_KANJI_DIGIT_RE = /^[零〇一二三四五六七八九]$/u;
 const HAN_CHAR_RE = /\p{Script=Han}/u;
+const READ_CACHE_LIMIT = 8192;
+const REPLACE_CACHE_LIMIT = 2048;
+const REPLACE_DETAILED_CACHE_LIMIT = 1024;
 
 interface CounterPrefixMatch {
   marker: string;
@@ -48,6 +51,70 @@ interface ParsedNumberTokens {
 interface TaiExpression {
   left: string;
   right: string;
+}
+
+class LruCache<V> {
+  private readonly map = new Map<string, V>();
+
+  constructor(private readonly capacity: number) {}
+
+  get(key: string): V | undefined {
+    const value = this.map.get(key);
+    if (value === undefined) {
+      return undefined;
+    }
+    this.map.delete(key);
+    this.map.set(key, value);
+    return value;
+  }
+
+  set(key: string, value: V): void {
+    if (this.map.has(key)) {
+      this.map.delete(key);
+    }
+    this.map.set(key, value);
+    if (this.map.size <= this.capacity) {
+      return;
+    }
+    const oldestKey = this.map.keys().next().value as string | undefined;
+    if (oldestKey !== undefined) {
+      this.map.delete(oldestKey);
+    }
+  }
+}
+
+function optionsCacheKey(options?: ReadOptions): string {
+  if (!options) {
+    return "";
+  }
+  const strictPart = options.strict ? "1" : "0";
+  const variant = options.variant;
+  const variantPart = [
+    variant?.zero ?? "",
+    variant?.four ?? "",
+    variant?.seven ?? "",
+    variant?.nine ?? "",
+  ].join("|");
+
+  const mode = options.mode;
+  if (!mode || Object.keys(mode).length === 0) {
+    return `${strictPart};${variantPart}`;
+  }
+
+  const modeEntries = Object.entries(mode);
+  if (modeEntries.length > 1) {
+    modeEntries.sort((a, b) => a[0].localeCompare(b[0]));
+  }
+  const modePart = modeEntries.map(([counterId, modeId]) => `${counterId}:${modeId}`).join(",");
+  return `${strictPart};${variantPart};${modePart}`;
+}
+
+function cloneReplaceResult(result: ReplaceResult): ReplaceResult {
+  return {
+    input: result.input,
+    output: result.output,
+    replacements: result.replacements.map((replacement) => ({ ...replacement })),
+  };
 }
 
 function detectCounterPrefix(input: string): CounterPrefixMatch | undefined {
@@ -231,7 +298,7 @@ function isTaiExpressionFragment(fragment: string): boolean {
   return detectTaiExpression(normalizeInput(fragment)) !== null;
 }
 
-function replaceInTextDetailedWithRules(input: string, rules: RuleBundle, options?: ReadOptions): ReplaceResult {
+function replaceInTextDetailedWithRules(input: string, rules: RuleBundle, markers: string[], options?: ReadOptions): ReplaceResult {
   if (input.length === 0) {
     return {
       input,
@@ -239,7 +306,6 @@ function replaceInTextDetailedWithRules(input: string, rules: RuleBundle, option
       replacements: [],
     };
   }
-  const markers = collectReplaceMarkers(rules);
   let out = "";
   let index = 0;
   const replacements: ReplaceResult["replacements"] = [];
@@ -300,8 +366,55 @@ function replaceInTextDetailedWithRules(input: string, rules: RuleBundle, option
   };
 }
 
-function replaceInTextWithRules(input: string, rules: RuleBundle, options?: ReadOptions): string {
-  return replaceInTextDetailedWithRules(input, rules, options).output;
+function replaceInTextWithRules(input: string, rules: RuleBundle, markers: string[], options?: ReadOptions): string {
+  if (input.length === 0) {
+    return input;
+  }
+  let out = "";
+  let index = 0;
+  while (index < input.length) {
+    const ch = input[index];
+    if (!CANDIDATE_START_RE.test(ch)) {
+      out += ch;
+      index += 1;
+      continue;
+    }
+
+    const maxEnd = Math.min(input.length, index + MAX_REPLACE_SPAN);
+    let matchedReading: string | undefined;
+    let matchedEnd = index;
+    for (let end = maxEnd; end > index; end -= 1) {
+      const fragment = input.slice(index, end);
+      if (!REPLACE_TRIGGER_RE.test(fragment)) {
+        continue;
+      }
+      if (!containsNumericChar(fragment)) {
+        continue;
+      }
+      if (!containsMarker(fragment, markers)) {
+        if (!shouldConvertBareNumberFragment(input, index, end, fragment) && !isTaiExpressionFragment(fragment)) {
+          continue;
+        }
+      }
+      const reading = toReading(fragment, rules, options);
+      if (!reading) {
+        continue;
+      }
+      matchedReading = reading.reading;
+      matchedEnd = end;
+      break;
+    }
+
+    if (matchedReading !== undefined) {
+      out += matchedReading;
+      index = matchedEnd;
+      continue;
+    }
+
+    out += ch;
+    index += 1;
+  }
+  return out;
 }
 
 function resolveCounterCompose(rules: RuleBundle, counterId: string, options?: ReadOptions) {
@@ -513,10 +626,52 @@ function toReading(input: string, rules: RuleBundle, options?: ReadOptions) {
 }
 
 function createYomiJaWithRules(rules: RuleBundle): YomiJa {
+  const replaceMarkers = collectReplaceMarkers(rules);
+  const readNoOptionsCache = new LruCache<string | null>(READ_CACHE_LIMIT);
+  const readWithOptionsCache = new LruCache<string | null>(READ_CACHE_LIMIT);
+  const replaceNoOptionsCache = new LruCache<string>(REPLACE_CACHE_LIMIT);
+  const replaceWithOptionsCache = new LruCache<string>(REPLACE_CACHE_LIMIT);
+  const replaceDetailedNoOptionsCache = new LruCache<ReplaceResult>(REPLACE_DETAILED_CACHE_LIMIT);
+  const replaceDetailedWithOptionsCache = new LruCache<ReplaceResult>(REPLACE_DETAILED_CACHE_LIMIT);
+  let readNoOptionsHot: { key: string; value: string | null } | undefined;
+  let readWithOptionsHot: { key: string; value: string | null } | undefined;
+  let replaceNoOptionsHot: { key: string; value: string } | undefined;
+  let replaceWithOptionsHot: { key: string; value: string } | undefined;
+  let replaceDetailedNoOptionsHot: { key: string; value: ReplaceResult } | undefined;
+  let replaceDetailedWithOptionsHot: { key: string; value: ReplaceResult } | undefined;
+
   return {
     read(input, options) {
+      if (!options) {
+        if (readNoOptionsHot?.key === input) {
+          return readNoOptionsHot.value;
+        }
+        const cached = readNoOptionsCache.get(input);
+        if (cached !== undefined) {
+          readNoOptionsHot = { key: input, value: cached };
+          return cached;
+        }
+        const result = toReading(input, rules, options);
+        const reading = result === null ? null : result.reading;
+        readNoOptionsCache.set(input, reading);
+        readNoOptionsHot = { key: input, value: reading };
+        return reading;
+      }
+
+      const cacheKey = `${input}\u0001${optionsCacheKey(options)}`;
+      if (readWithOptionsHot?.key === cacheKey) {
+        return readWithOptionsHot.value;
+      }
+      const cached = readWithOptionsCache.get(cacheKey);
+      if (cached !== undefined) {
+        readWithOptionsHot = { key: cacheKey, value: cached };
+        return cached;
+      }
       const result = toReading(input, rules, options);
-      return result === null ? null : result.reading;
+      const reading = result === null ? null : result.reading;
+      readWithOptionsCache.set(cacheKey, reading);
+      readWithOptionsHot = { key: cacheKey, value: reading };
+      return reading;
     },
     readDetailed(input, options) {
       return toReading(input, rules, options);
@@ -525,10 +680,64 @@ function createYomiJaWithRules(rules: RuleBundle): YomiJa {
       return joinTokens(readNumberTokens(value, rules.core, options?.variant));
     },
     replaceInText(input, options) {
-      return replaceInTextWithRules(input, rules, options);
+      if (!options) {
+        if (replaceNoOptionsHot?.key === input) {
+          return replaceNoOptionsHot.value;
+        }
+        const cached = replaceNoOptionsCache.get(input);
+        if (cached !== undefined) {
+          replaceNoOptionsHot = { key: input, value: cached };
+          return cached;
+        }
+        const output = replaceInTextWithRules(input, rules, replaceMarkers, options);
+        replaceNoOptionsCache.set(input, output);
+        replaceNoOptionsHot = { key: input, value: output };
+        return output;
+      }
+
+      const cacheKey = `${input}\u0001${optionsCacheKey(options)}`;
+      if (replaceWithOptionsHot?.key === cacheKey) {
+        return replaceWithOptionsHot.value;
+      }
+      const cached = replaceWithOptionsCache.get(cacheKey);
+      if (cached !== undefined) {
+        replaceWithOptionsHot = { key: cacheKey, value: cached };
+        return cached;
+      }
+      const output = replaceInTextWithRules(input, rules, replaceMarkers, options);
+      replaceWithOptionsCache.set(cacheKey, output);
+      replaceWithOptionsHot = { key: cacheKey, value: output };
+      return output;
     },
     replaceInTextDetailed(input, options) {
-      return replaceInTextDetailedWithRules(input, rules, options);
+      if (!options) {
+        if (replaceDetailedNoOptionsHot?.key === input) {
+          return cloneReplaceResult(replaceDetailedNoOptionsHot.value);
+        }
+        const cached = replaceDetailedNoOptionsCache.get(input);
+        if (cached !== undefined) {
+          replaceDetailedNoOptionsHot = { key: input, value: cached };
+          return cloneReplaceResult(cached);
+        }
+        const result = replaceInTextDetailedWithRules(input, rules, replaceMarkers, options);
+        replaceDetailedNoOptionsCache.set(input, result);
+        replaceDetailedNoOptionsHot = { key: input, value: result };
+        return cloneReplaceResult(result);
+      }
+
+      const cacheKey = `${input}\u0001${optionsCacheKey(options)}`;
+      if (replaceDetailedWithOptionsHot?.key === cacheKey) {
+        return cloneReplaceResult(replaceDetailedWithOptionsHot.value);
+      }
+      const cached = replaceDetailedWithOptionsCache.get(cacheKey);
+      if (cached !== undefined) {
+        replaceDetailedWithOptionsHot = { key: cacheKey, value: cached };
+        return cloneReplaceResult(cached);
+      }
+      const result = replaceInTextDetailedWithRules(input, rules, replaceMarkers, options);
+      replaceDetailedWithOptionsCache.set(cacheKey, result);
+      replaceDetailedWithOptionsHot = { key: cacheKey, value: result };
+      return cloneReplaceResult(result);
     },
   };
 }
