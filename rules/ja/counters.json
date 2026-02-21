@@ -105,6 +105,23 @@
         "suffixReading": ["しゅうかん"]
       }
     },
+    "shuu": {
+      "surface": {
+        "suffix": ["週"]
+      },
+      "compose": {
+        "type": "exceptions_first",
+        "exceptions": {
+          "1": ["いっ", "しゅう"],
+          "8": ["はっ", "しゅう"],
+          "10": ["じゅっ", "しゅう"]
+        },
+        "fallback": {
+          "type": "concat",
+          "suffixReading": ["しゅう"]
+        }
+      }
+    },
     "page": {
       "surface": {
         "suffix": ["ページ", "頁"]
@@ -112,6 +129,126 @@
       "compose": {
         "type": "concat",
         "suffixReading": ["ぺーじ"]
+      }
+    },
+    "kou_clause": {
+      "surface": {
+        "suffix": ["項"]
+      },
+      "compose": {
+        "type": "concat",
+        "suffixReading": ["こう"]
+      }
+    },
+    "kan_clause": {
+      "surface": {
+        "suffix": ["款"]
+      },
+      "compose": {
+        "type": "concat",
+        "suffixReading": ["かん"]
+      }
+    },
+    "han_edition": {
+      "surface": {
+        "suffix": ["版"]
+      },
+      "compose": {
+        "type": "concat",
+        "suffixReading": ["ばん"]
+      }
+    },
+    "ki_base": {
+      "surface": {
+        "suffix": ["基"]
+      },
+      "compose": {
+        "type": "concat",
+        "suffixReading": ["き"]
+      }
+    },
+    "ben_service": {
+      "surface": {
+        "suffix": ["便"]
+      },
+      "compose": {
+        "type": "concat",
+        "suffixReading": ["びん"]
+      }
+    },
+    "ban_chi": {
+      "surface": {
+        "suffix": ["番地"]
+      },
+      "compose": {
+        "type": "concat",
+        "suffixReading": ["ばん", "ち"]
+      }
+    },
+    "chou_me": {
+      "surface": {
+        "suffix": ["丁目"]
+      },
+      "compose": {
+        "type": "exceptions_first",
+        "exceptions": {
+          "1": ["いっ", "ちょう", "め"],
+          "8": ["はっ", "ちょう", "め"],
+          "10": ["じゅっ", "ちょう", "め"]
+        },
+        "fallback": {
+          "type": "concat",
+          "suffixReading": ["ちょう", "め"]
+        }
+      }
+    },
+    "hou_packet": {
+      "surface": {
+        "suffix": ["包"]
+      },
+      "compose": {
+        "type": "pattern",
+        "patternId": "h_row_3forms",
+        "forms": {
+          "h": ["ほう"],
+          "b": ["ぼう"],
+          "p": ["ぽう"]
+        }
+      }
+    },
+    "kan_tube": {
+      "surface": {
+        "suffix": ["管"]
+      },
+      "compose": {
+        "type": "exceptions_first",
+        "exceptions": {
+          "1": ["いっ", "かん"],
+          "6": ["ろっ", "かん"],
+          "8": ["はっ", "かん"],
+          "10": ["じゅっ", "かん"]
+        },
+        "fallback": {
+          "type": "concat",
+          "suffixReading": ["かん"]
+        }
+      }
+    },
+    "shiki_set": {
+      "surface": {
+        "suffix": ["式"]
+      },
+      "compose": {
+        "type": "exceptions_first",
+        "exceptions": {
+          "1": ["いっ", "しき"],
+          "8": ["はっ", "しき"],
+          "10": ["じゅっ", "しき"]
+        },
+        "fallback": {
+          "type": "concat",
+          "suffixReading": ["しき"]
+        }
       }
     },
     "bu": {
@@ -173,8 +310,16 @@
         "suffix": ["戦"]
       },
       "compose": {
-        "type": "concat",
-        "suffixReading": ["せん"]
+        "type": "exceptions_first",
+        "exceptions": {
+          "1": ["いっ", "せん"],
+          "8": ["はっ", "せん"],
+          "10": ["じゅっ", "せん"]
+        },
+        "fallback": {
+          "type": "concat",
+          "suffixReading": ["せん"]
+        }
       }
     },
     "kyoku_music": {

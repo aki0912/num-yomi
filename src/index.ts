@@ -8,6 +8,35 @@ import { applyCounter } from "./counters/apply.js";
 import { loadRules } from "./rules/load.js";
 
 const DECIMAL_POINT_TOKEN = "てん";
+const COUNTER_POSTFIXES = [
+  { marker: "目", reading: ["め"] },
+  { marker: "め", reading: ["め"] },
+] as const;
+
+interface CounterPostfixMatch {
+  marker: string;
+  reading: readonly string[];
+}
+
+function detectCounterPostfix(input: string): CounterPostfixMatch | undefined {
+  let best: CounterPostfixMatch | undefined;
+  for (const postfix of COUNTER_POSTFIXES) {
+    if (!input.endsWith(postfix.marker)) {
+      continue;
+    }
+    if (!best || postfix.marker.length > best.marker.length) {
+      best = postfix;
+    }
+  }
+  return best;
+}
+
+function appendCounterPostfix(tokens: string[], postfix: CounterPostfixMatch | undefined): string[] {
+  if (!postfix) {
+    return tokens;
+  }
+  return [...tokens, ...postfix.reading];
+}
 
 function resolveCounterCompose(rules: RuleBundle, counterId: string, options?: ReadOptions) {
   const counter = rules.counters.counters[counterId];
@@ -47,11 +76,21 @@ function readDecimalTokens(
 
 function toReading(input: string, rules: RuleBundle, options?: ReadOptions) {
   const normalized = normalizeInput(input);
-  const detected = detectCounter(normalized, rules.counters);
-  const numberText = detected ? detected.numberPart : normalized;
+  let postfix: CounterPostfixMatch | undefined;
+  let counterInput = normalized;
+  let detected = detectCounter(normalized, rules.counters);
+  if (!detected) {
+    postfix = detectCounterPostfix(normalized);
+    if (postfix) {
+      counterInput = normalized.slice(0, -postfix.marker.length);
+      detected = detectCounter(counterInput, rules.counters);
+    }
+  }
+  const numberText = detected ? detected.numberPart : counterInput;
   const decimal = parseArabicDecimal(numberText);
   if (decimal) {
     const baseTokens = readDecimalTokens(decimal.sign, decimal.integerPart, decimal.fractionDigits, rules, options);
+    const tokensWithPostfix = appendCounterPostfix(baseTokens, postfix);
     if (!detected) {
       return {
         input,
@@ -59,8 +98,8 @@ function toReading(input: string, rules: RuleBundle, options?: ReadOptions) {
         number: decimal.normalized,
         counterId: undefined,
         modeUsed: undefined,
-        tokens: baseTokens,
-        reading: joinTokens(baseTokens),
+        tokens: tokensWithPostfix,
+        reading: joinTokens(tokensWithPostfix),
       } satisfies ReadResult;
     }
 
@@ -72,8 +111,8 @@ function toReading(input: string, rules: RuleBundle, options?: ReadOptions) {
         number: decimal.normalized,
         counterId: detected.counterId,
         modeUsed: resolved.modeUsed,
-        tokens: baseTokens,
-        reading: joinTokens(baseTokens),
+        tokens: tokensWithPostfix,
+        reading: joinTokens(tokensWithPostfix),
       } satisfies ReadResult;
     }
 
@@ -86,7 +125,7 @@ function toReading(input: string, rules: RuleBundle, options?: ReadOptions) {
       return null;
     }
 
-    const tokens = [...baseTokens, ...resolved.compose.suffixReading];
+    const tokens = appendCounterPostfix([...baseTokens, ...resolved.compose.suffixReading], postfix);
     return {
       input,
       normalized,
@@ -121,7 +160,7 @@ function toReading(input: string, rules: RuleBundle, options?: ReadOptions) {
       )
     : { tokens: baseTokens, modeUsed: undefined, counterId: undefined };
 
-  const tokens = applied.tokens;
+  const tokens = appendCounterPostfix(applied.tokens, postfix);
   return {
     input,
     normalized,

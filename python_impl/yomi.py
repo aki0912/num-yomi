@@ -41,6 +41,7 @@ BIG_UNITS: Dict[str, int] = {
 }
 
 DECIMAL_POINT_TOKEN = "てん"
+COUNTER_POSTFIXES: List[Tuple[str, List[str]]] = [("目", ["め"]), ("め", ["め"])]
 
 __all__ = [
     "YomiJaPy",
@@ -129,6 +130,16 @@ def detect_counter(
         }
 
     return None
+
+
+def detect_counter_postfix(input_text: str) -> Optional[Tuple[str, List[str]]]:
+    best: Optional[Tuple[str, List[str]]] = None
+    for marker, reading in COUNTER_POSTFIXES:
+        if not input_text.endswith(marker):
+            continue
+        if best is None or len(marker) > len(best[0]):
+            best = (marker, reading)
+    return best
 
 
 def parse_kansuji(input_text: str) -> Optional[int]:
@@ -510,8 +521,15 @@ class YomiJaPy:
 
     def read_detailed(self, input_text: str, options: Optional[Dict[str, Any]] = None) -> Optional[Dict[str, Any]]:
         normalized = normalize_input(input_text)
+        postfix = None
+        counter_input = normalized
         detected = detect_counter(normalized, self.prefixes_by_head, self.suffixes_by_tail)
-        number_text = detected["numberPart"] if detected else normalized
+        if detected is None:
+            postfix = detect_counter_postfix(normalized)
+            if postfix:
+                counter_input = normalized[: len(normalized) - len(postfix[0])]
+                detected = detect_counter(counter_input, self.prefixes_by_head, self.suffixes_by_tail)
+        number_text = detected["numberPart"] if detected else counter_input
         strict = bool(options.get("strict")) if isinstance(options, dict) else False
 
         decimal = parse_decimal(number_text)
@@ -542,6 +560,9 @@ class YomiJaPy:
                 tokens = base_tokens
                 mode_used = None
                 counter_id = None
+
+            if postfix:
+                tokens = list(tokens) + list(postfix[1])
 
             return {
                 "input": input_text,
@@ -575,6 +596,9 @@ class YomiJaPy:
             tokens = base_tokens
             mode_used = None
             counter_id = None
+
+        if postfix:
+            tokens = list(tokens) + list(postfix[1])
 
         return {
             "input": input_text,

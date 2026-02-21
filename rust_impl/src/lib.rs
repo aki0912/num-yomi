@@ -17,6 +17,23 @@ type Tokens = &'static [Token];
 type TokenBuf = SmallVec<[Token; 16]>;
 const DECIMAL_POINT_TOKEN: Token = "てん";
 
+#[derive(Clone, Copy)]
+struct CounterPostfixDef {
+    marker: &'static str,
+    reading: Tokens,
+}
+
+const COUNTER_POSTFIXES: &[CounterPostfixDef] = &[
+    CounterPostfixDef {
+        marker: "目",
+        reading: &["め"],
+    },
+    CounterPostfixDef {
+        marker: "め",
+        reading: &["め"],
+    },
+];
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum ZeroVariant {
     Rei,
@@ -306,6 +323,12 @@ fn runtime_rules() -> &'static RuntimeRules {
 struct CounterMatch<'a> {
     counter: &'static CounterDef,
     number_part: &'a str,
+}
+
+#[derive(Clone, Copy)]
+struct CounterPostfixMatch {
+    marker: &'static str,
+    reading: Tokens,
 }
 
 struct ParsedDecimal {
@@ -608,12 +631,21 @@ fn read_with_options(
     rules: &RuntimeRules,
 ) -> Result<Option<String>, String> {
     let normalized = normalize_input(input);
-    let detected = detect_counter(&normalized, rules);
+    let mut postfix: Option<CounterPostfixMatch> = None;
+    let mut counter_input = normalized.as_str();
+    let mut detected = detect_counter(counter_input, rules);
+    if detected.is_none() {
+        postfix = detect_counter_postfix(&normalized);
+        if let Some(matched_postfix) = postfix {
+            counter_input = &normalized[..normalized.len() - matched_postfix.marker.len()];
+            detected = detect_counter(counter_input, rules);
+        }
+    }
 
     let number_text = detected
         .as_ref()
         .map(|m| m.number_part)
-        .unwrap_or(normalized.as_str());
+        .unwrap_or(counter_input);
 
     if let Some(decimal) = parse_decimal(number_text) {
         let base_tokens = read_decimal_tokens(&decimal, rules.core, options)?;
@@ -631,6 +663,7 @@ fn read_with_options(
             base_tokens
         };
 
+        let final_tokens = append_counter_postfix(final_tokens, postfix);
         return Ok(Some(join_tokens(&final_tokens)));
     }
 
@@ -649,6 +682,7 @@ fn read_with_options(
         base_tokens
     };
 
+    let final_tokens = append_counter_postfix(final_tokens, postfix);
     Ok(Some(join_tokens(&final_tokens)))
 }
 
@@ -699,6 +733,32 @@ fn detect_counter<'a>(input: &'a str, rules: &RuntimeRules) -> Option<CounterMat
     }
 
     None
+}
+
+fn detect_counter_postfix(input: &str) -> Option<CounterPostfixMatch> {
+    let mut best: Option<CounterPostfixMatch> = None;
+    for postfix in COUNTER_POSTFIXES {
+        if !input.ends_with(postfix.marker) {
+            continue;
+        }
+        let matched = CounterPostfixMatch {
+            marker: postfix.marker,
+            reading: postfix.reading,
+        };
+        match best {
+            None => best = Some(matched),
+            Some(current) if matched.marker.len() > current.marker.len() => best = Some(matched),
+            _ => {}
+        }
+    }
+    best
+}
+
+fn append_counter_postfix(mut tokens: TokenBuf, postfix: Option<CounterPostfixMatch>) -> TokenBuf {
+    if let Some(postfix) = postfix {
+        tokens.extend_from_slice(postfix.reading);
+    }
+    tokens
 }
 
 fn parse_number(input: &str) -> Option<NumberValue> {
