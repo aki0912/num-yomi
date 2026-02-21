@@ -179,6 +179,7 @@ const h = replaceInTextDetailed("今日は第3版を1.2本買った");
 | `bu` | suffix | `部` | 数読み + `ぶ` |
 | `kou_school` | suffix | `校` | 数読み + `こう` |
 | `to_building` | suffix | `棟` | 数読み + `とう` |
+| `tou_grade` | suffix | `等` | 数読み + `とう` |
 | `ko_house` | suffix | `戸` | 数読み + `こ` |
 | `setai` | suffix | `世帯` | 数読み + `せたい` |
 | `gou` | suffix | `号` | 数読み + `ごう` |
@@ -254,6 +255,7 @@ const h = replaceInTextDetailed("今日は第3版を1.2本買った");
 | `kai` | suffix | `回` | `1/6/8/10` の促音 |
 | `ken` | suffix | `軒` | `3=さんげん`, `1/6/8/10` の促音 |
 | `tou` | suffix | `頭` | `1/8/10` の促音 |
+| `tou_grade` | suffix | `等` | `1/8/10` の促音 |
 | `gai` | suffix | `階` | `3=さんがい`, `1/6/8/10` の促音 |
 | `soku` | suffix | `足` | `3=さんぞく`, `1/8/10` の促音 |
 | `chaku` | suffix | `着` | `1/8/10` の促音 |

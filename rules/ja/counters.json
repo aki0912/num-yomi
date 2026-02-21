@@ -949,6 +949,23 @@
         }
       }
     },
+    "tou_grade": {
+      "surface": {
+        "suffix": ["等"]
+      },
+      "compose": {
+        "type": "exceptions_first",
+        "exceptions": {
+          "1": ["いっ", "とう"],
+          "8": ["はっ", "とう"],
+          "10": ["じゅっ", "とう"]
+        },
+        "fallback": {
+          "type": "concat",
+          "suffixReading": ["とう"]
+        }
+      }
+    },
     "wa": {
       "surface": {
         "suffix": ["羽"]
