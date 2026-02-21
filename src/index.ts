@@ -157,6 +157,10 @@ function containsMarker(text: string, markers: string[]): boolean {
   return false;
 }
 
+function isBareParsableNumber(text: string): boolean {
+  return hasParsableNumberText(normalizeInput(text));
+}
+
 function replaceInTextWithRules(input: string, rules: RuleBundle, options?: ReadOptions): string {
   if (input.length === 0) {
     return input;
@@ -183,7 +187,7 @@ function replaceInTextWithRules(input: string, rules: RuleBundle, options?: Read
       if (!containsNumericChar(fragment)) {
         continue;
       }
-      if (!containsMarker(fragment, markers)) {
+      if (!containsMarker(fragment, markers) && !isBareParsableNumber(fragment)) {
         continue;
       }
       const reading = toReading(fragment, rules, options);
