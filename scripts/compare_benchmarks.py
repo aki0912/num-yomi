@@ -92,44 +92,84 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Compare Node/Python/Rust benchmark results")
     parser.add_argument("--cases", default=str(ROOT_DIR / "test" / "cases.json"))
     parser.add_argument("--iterations", type=int, default=20_000)
+    parser.add_argument(
+        "--call-style",
+        action="store_true",
+        help="Use library-call benchmark runners instead of CLI runners",
+    )
     args = parser.parse_args()
 
     cases_path = str(Path(args.cases).resolve())
     iterations = str(args.iterations)
 
-    node_cmd = [
-        "node",
-        "bench/bench_node.mjs",
-        "--cases",
-        cases_path,
-        "--iterations",
-        iterations,
-    ]
+    if args.call_style:
+        node_cmd = [
+            "node",
+            "bench/bench_node_call.mjs",
+            "--cases",
+            cases_path,
+            "--iterations",
+            iterations,
+        ]
 
-    py_cmd = [
-        "python3",
-        "python_impl/yomi.py",
-        "bench",
-        "--cases",
-        cases_path,
-        "--iterations",
-        iterations,
-    ]
+        py_cmd = [
+            "python3",
+            "bench/bench_python_call.py",
+            "--cases",
+            cases_path,
+            "--iterations",
+            iterations,
+        ]
 
-    rust_cmd = [
-        "cargo",
-        "run",
-        "--quiet",
-        "--release",
-        "--manifest-path",
-        "rust_impl/Cargo.toml",
-        "--",
-        "bench",
-        "--cases",
-        cases_path,
-        "--iterations",
-        iterations,
-    ]
+        rust_cmd = [
+            "cargo",
+            "run",
+            "--quiet",
+            "--release",
+            "--manifest-path",
+            "rust_impl/Cargo.toml",
+            "--bin",
+            "bench_call",
+            "--",
+            "--cases",
+            cases_path,
+            "--iterations",
+            iterations,
+        ]
+    else:
+        node_cmd = [
+            "node",
+            "bench/bench_node.mjs",
+            "--cases",
+            cases_path,
+            "--iterations",
+            iterations,
+        ]
+
+        py_cmd = [
+            "python3",
+            "python_impl/yomi.py",
+            "bench",
+            "--cases",
+            cases_path,
+            "--iterations",
+            iterations,
+        ]
+
+        rust_cmd = [
+            "cargo",
+            "run",
+            "--quiet",
+            "--release",
+            "--manifest-path",
+            "rust_impl/Cargo.toml",
+            "--",
+            "bench",
+            "--cases",
+            cases_path,
+            "--iterations",
+            iterations,
+        ]
 
     node = run_command(node_cmd)
     py = run_command(py_cmd)

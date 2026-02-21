@@ -260,6 +260,9 @@ pnpm build
 
 # 比較実行（ケースごとの表を出力）
 pnpm bench:compare
+
+# 呼び出し形式API（ライブラリ関数直呼び）で比較
+pnpm bench:compare:call
 ```
 
 反復回数を変更する例:
