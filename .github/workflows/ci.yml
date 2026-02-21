@@ -46,3 +46,6 @@ jobs:
 
       - name: Verify Rust parity (replace)
         run: cargo run --quiet --manifest-path rust_impl/Cargo.toml --bin bench_replace_call -- --cases test/replace_cases.json --iterations 1 > /dev/null
+
+      - name: Verify sample.txt benchmark runners
+        run: python3 scripts/compare_sample_benchmark.py --input test/sample.txt --expected test/sample.expected.txt --iterations 1 > /dev/null

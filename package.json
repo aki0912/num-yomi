@@ -29,15 +29,19 @@
     "bench:node": "node bench/bench_node.mjs --cases test/cases.json --iterations 20000",
     "bench:node:call": "node bench/bench_node_call.mjs --cases test/cases.json --iterations 20000",
     "bench:node:replace:call": "node bench/bench_node_replace_call.mjs --cases test/replace_cases.json --iterations 20000",
+    "bench:node:sample:replace:call": "node bench/bench_node_sample_replace_call.mjs --input test/sample.txt --expected test/sample.expected.txt --iterations 2000",
     "bench:python": "python3 python_impl/num_yomi.py bench --cases test/cases.json --iterations 20000",
     "bench:python:call": "python3 bench/bench_python_call.py --cases test/cases.json --iterations 20000",
     "bench:python:replace:call": "python3 bench/bench_python_replace_call.py --cases test/replace_cases.json --iterations 20000",
+    "bench:python:sample:replace:call": "python3 bench/bench_python_sample_replace_call.py --input test/sample.txt --expected test/sample.expected.txt --iterations 2000",
     "bench:rust": "cargo run --quiet --release --manifest-path rust_impl/Cargo.toml --bin num-yomi-rust -- bench --cases test/cases.json --iterations 20000",
     "bench:rust:call": "cargo run --quiet --release --manifest-path rust_impl/Cargo.toml --bin bench_call -- --cases test/cases.json --iterations 20000",
     "bench:rust:replace:call": "cargo run --quiet --release --manifest-path rust_impl/Cargo.toml --bin bench_replace_call -- --cases test/replace_cases.json --iterations 20000",
+    "bench:rust:sample:replace:call": "cargo run --quiet --release --manifest-path rust_impl/Cargo.toml --bin bench_sample_replace_call -- --input test/sample.txt --expected test/sample.expected.txt --iterations 2000",
     "bench:compare": "python3 scripts/compare_benchmarks.py --call-style --cases test/cases.json --iterations 20000",
     "bench:compare:replace": "python3 scripts/compare_benchmarks.py --call-style --replace-style --cases test/replace_cases.json --iterations 20000",
-    "bench:update-readme": "python3 scripts/update_readme_benchmarks.py --runs 5 --iterations 20000"
+    "bench:compare:sample:replace": "python3 scripts/compare_sample_benchmark.py --input test/sample.txt --expected test/sample.expected.txt --iterations 2000",
+    "bench:update-readme": "python3 scripts/update_readme_benchmarks.py --runs 5 --iterations 20000 --sample-iterations 2000"
   },
   "engines": {
     "node": ">=20"

@@ -413,6 +413,9 @@ pnpm bench:compare
 
 # 文中置換の呼び出し形式API（ライブラリ関数直呼び）で比較
 pnpm bench:compare:replace
+
+# sample.txt 全文の置換性能を比較
+pnpm bench:compare:sample:replace
 ```
 
 反復回数を変更する例:
@@ -427,6 +430,9 @@ python3 scripts/compare_benchmarks.py --cases test/cases.json --iterations 5000
 pnpm bench:node
 pnpm bench:python
 pnpm bench:rust
+pnpm bench:node:sample:replace:call
+pnpm bench:python:sample:replace:call
+pnpm bench:rust:sample:replace:call
 ```
 
 README の計測結果を自動更新:
@@ -435,6 +441,8 @@ README の計測結果を自動更新:
 pnpm bench:update-readme
 ```
 
+`bench:update-readme` は `bench:compare` / `bench:compare:replace` / `bench:compare:sample:replace` をそれぞれ `5回` 実行してレンジと平均を更新します。
+
 計測環境（2026-02-21 時点）:
 
 - Node.js: `v25.6.1`
@@ -442,16 +450,20 @@ pnpm bench:update-readme
 - Rust: `rustc 1.92.0`, `cargo 1.92.0`
 - OS: `Darwin 25.3.0 (arm64, Apple Silicon)`
 
-直近計測結果（2026-02-21, `--iterations 20000`, 5回計測レンジ）:
+直近計測結果（2026-02-21, `--iterations 20000`, sample `--iterations 2000`, 5回計測レンジ）:
 
 - `pnpm bench:compare`（call-style）
-  - Node: `41.232 - 50.154 ms`（平均 `45.585 ms`）
-  - Python: `392.065 - 402.108 ms`（平均 `396.849 ms`）
-  - Rust: `20.461 - 27.915 ms`（平均 `24.616 ms`）
+  - Node: `38.794 - 43.311 ms`（平均 `40.300 ms`）
+  - Python: `370.441 - 375.607 ms`（平均 `371.871 ms`）
+  - Rust: `27.724 - 33.282 ms`（平均 `31.369 ms`）
 - `pnpm bench:compare:replace`
-  - Node: `15.494 - 16.390 ms`（平均 `15.925 ms`）
-  - Python: `90.545 - 94.329 ms`（平均 `92.565 ms`）
-  - Rust: `3.775 - 5.705 ms`（平均 `4.518 ms`）
+  - Node: `14.610 - 16.028 ms`（平均 `15.056 ms`）
+  - Python: `85.285 - 89.067 ms`（平均 `87.153 ms`）
+  - Rust: `7.494 - 8.495 ms`（平均 `7.975 ms`）
+- `pnpm bench:compare:sample:replace`
+  - Node: `343.154 - 359.834 ms`（平均 `353.024 ms`）
+  - Python: `1447.626 - 1491.459 ms`（平均 `1463.760 ms`）
+  - Rust: `104.742 - 109.245 ms`（平均 `106.624 ms`）
 
 注: ベンチ結果はマシン負荷や実行タイミングで多少ぶれます。
 

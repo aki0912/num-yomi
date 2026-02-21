@@ -10,7 +10,7 @@ import statistics
 import subprocess
 from typing import Sequence
 
-TOTAL_RE = re.compile(r"^-\s*(node|python|rust):\s*([0-9]+(?:\.[0-9]+)?)\s*$", re.MULTILINE)
+TOTAL_LINE_RE = re.compile(r"^-\s*(node|python|rust):\s*([0-9]+(?:\.[0-9]+)?)\s*$")
 
 
 @dataclasses.dataclass
@@ -43,9 +43,24 @@ def run_command(command: Sequence[str]) -> str:
 
 
 def parse_totals(output: str) -> dict[str, float]:
+    lines = output.splitlines()
+    total_header = next((i for i, line in enumerate(lines) if line.strip() == "Total time (ms)"), None)
+
     parsed: dict[str, float] = {}
-    for name, value in TOTAL_RE.findall(output):
-        parsed[name] = float(value)
+    if total_header is not None:
+        for line in lines[total_header + 1 :]:
+            if line.strip() == "":
+                break
+            matched = TOTAL_LINE_RE.match(line.strip())
+            if matched:
+                name, value = matched.groups()
+                parsed[name] = float(value)
+    else:
+        for line in lines:
+            matched = TOTAL_LINE_RE.match(line.strip())
+            if matched:
+                name, value = matched.groups()
+                parsed[name] = float(value)
 
     missing = [name for name in ("node", "python", "rust") if name not in parsed]
     if missing:
@@ -76,9 +91,21 @@ def format_line(summary: StatSummary) -> str:
     return f"`{summary.min:.3f} - {summary.max:.3f} ms`（平均 `{summary.avg:.3f} ms`）"
 
 
-def build_section(date_text: str, iterations: int, runs: int, read_stats: BenchSummary, replace_stats: BenchSummary) -> list[str]:
+def build_section(
+    date_text: str,
+    iterations: int,
+    sample_iterations: int,
+    runs: int,
+    read_stats: BenchSummary,
+    replace_stats: BenchSummary,
+    sample_replace_stats: BenchSummary,
+) -> list[str]:
     return [
-        f"直近計測結果（{date_text}, `--iterations {iterations}`, {runs}回計測レンジ）:",
+        (
+            "直近計測結果"
+            f"（{date_text}, `--iterations {iterations}`, sample `--iterations {sample_iterations}`,"
+            f" {runs}回計測レンジ）:"
+        ),
         "",
         "- `pnpm bench:compare`（call-style）",
         f"  - Node: {format_line(read_stats.node)}",
@@ -88,6 +115,10 @@ def build_section(date_text: str, iterations: int, runs: int, read_stats: BenchS
         f"  - Node: {format_line(replace_stats.node)}",
         f"  - Python: {format_line(replace_stats.python)}",
         f"  - Rust: {format_line(replace_stats.rust)}",
+        "- `pnpm bench:compare:sample:replace`",
+        f"  - Node: {format_line(sample_replace_stats.node)}",
+        f"  - Python: {format_line(sample_replace_stats.python)}",
+        f"  - Rust: {format_line(sample_replace_stats.rust)}",
         "",
     ]
 
@@ -110,6 +141,7 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Run benchmark comparisons repeatedly and update README results section")
     parser.add_argument("--runs", type=int, default=5)
     parser.add_argument("--iterations", type=int, default=20_000)
+    parser.add_argument("--sample-iterations", type=int, default=2_000)
     parser.add_argument("--readme", default="README.md")
     parser.add_argument("--date", default=None, help="Date text for README (default: today, YYYY-MM-DD)")
     return parser.parse_args()
@@ -121,6 +153,8 @@ def main() -> None:
         raise SystemExit("--runs must be > 0")
     if args.iterations <= 0:
         raise SystemExit("--iterations must be > 0")
+    if args.sample_iterations <= 0:
+        raise SystemExit("--sample-iterations must be > 0")
 
     date_text = args.date or dt.date.today().isoformat()
     readme_path = pathlib.Path(args.readme)
@@ -144,6 +178,16 @@ def main() -> None:
         "--iterations",
         str(args.iterations),
     ]
+    sample_replace_command = [
+        "python3",
+        "scripts/compare_sample_benchmark.py",
+        "--input",
+        "test/sample.txt",
+        "--expected",
+        "test/sample.expected.txt",
+        "--iterations",
+        str(args.sample_iterations),
+    ]
 
     print("Collecting pnpm bench:compare", flush=True)
     read_stats = collect_benchmark_stats(read_command, args.runs)
@@ -151,7 +195,18 @@ def main() -> None:
     print("Collecting pnpm bench:compare:replace", flush=True)
     replace_stats = collect_benchmark_stats(replace_command, args.runs)
 
-    section_lines = build_section(date_text, args.iterations, args.runs, read_stats, replace_stats)
+    print("Collecting pnpm bench:compare:sample:replace", flush=True)
+    sample_replace_stats = collect_benchmark_stats(sample_replace_command, args.runs)
+
+    section_lines = build_section(
+        date_text,
+        args.iterations,
+        args.sample_iterations,
+        args.runs,
+        read_stats,
+        replace_stats,
+        sample_replace_stats,
+    )
     update_readme(readme_path, section_lines)
     print(f"Updated {readme_path}")
 
