@@ -416,6 +416,53 @@
           }
         }
       }
+    },
+    "month": {
+      "surface": {
+        "suffix": ["月"]
+      },
+      "compose": {
+        "type": "exceptions_first",
+        "exceptions": {
+          "4": ["し", "がつ"],
+          "7": ["しち", "がつ"],
+          "9": ["く", "がつ"]
+        },
+        "fallback": {
+          "type": "concat",
+          "suffixReading": ["がつ"]
+        }
+      }
+    },
+    "ji": {
+      "surface": {
+        "suffix": ["時"]
+      },
+      "compose": {
+        "type": "exceptions_first",
+        "exceptions": {
+          "4": ["よ", "じ"],
+          "7": ["しち", "じ"],
+          "9": ["く", "じ"]
+        },
+        "fallback": {
+          "type": "concat",
+          "suffixReading": ["じ"]
+        }
+      }
+    },
+    "fun": {
+      "surface": {
+        "suffix": ["分"]
+      },
+      "compose": {
+        "type": "pattern",
+        "patternId": "fun_p_forms",
+        "forms": {
+          "h": ["ふん"],
+          "p": ["ぷん"]
+        }
+      }
     }
   }
 }

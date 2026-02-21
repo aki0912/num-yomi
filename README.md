@@ -128,13 +128,14 @@ const e = yomiJa.readNumber(5000n);
 
 ### `pattern`（末尾音に応じて h/b/p を切替）
 
-`patternId: h_row_3forms` を使用。末尾トークンで促音化・濁音化・半濁音化を切り替えます。
+`patternId: h_row_3forms` と `fun_p_forms` を使用。末尾トークンで促音化・濁音化・半濁音化を切り替えます。
 
 | counterId | 接頭辞/接尾辞 | 表記 | 発音ルール |
 |---|---|---|---|
 | `hon` | suffix | `本` | `ほん/ぼん/ぽん` |
 | `hiki` | suffix | `匹` | `ひき/びき/ぴき` |
 | `hai` | suffix | `杯` | `はい/ばい/ぱい` |
+| `fun` | suffix | `分` | `ふん/ぷん` |
 
 ### `exceptions_first`（例外を優先し、未定義は fallback）
 
@@ -154,6 +155,8 @@ const e = yomiJa.readNumber(5000n);
 | `hako` | suffix | `箱` | `1=ひとはこ`, `3=さんぱこ` など |
 | `kan` | suffix | `巻` | `1/6/8/10` の促音 |
 | `tsu` | suffix | `つ` | `1..10` が和語（`ひとつ` など） |
+| `month` | suffix | `月` | `4=しがつ`, `7=しちがつ`, `9=くがつ` |
+| `ji` | suffix | `時` | `4=よじ`, `7=しちじ`, `9=くじ` |
 
 ### `mode`（意味モードで読み分け）
 
@@ -173,7 +176,7 @@ const e = yomiJa.readNumber(5000n);
 - `rules/ja/core.json`
   - 数読みコア（0, 小単位, 大単位, 異読バリアント）
 - `rules/ja/patterns.json`
-  - 共有パターン（`h_row_3forms`）
+  - 共有パターン（`h_row_3forms`, `fun_p_forms`）
 - `rules/ja/counters.json`
   - 助数詞定義（surface / compose / exceptions / mode）
 
