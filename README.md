@@ -155,6 +155,7 @@ const g = replaceInText("今日は第3版を1.2本買った");
 | `kan_clause` | suffix | `款` | 数読み + `かん` |
 | `han_edition` | suffix | `版` | 数読み + `はん` |
 | `ki_base` | suffix | `基` | 数読み + `き` |
+| `ki_period` | suffix | `期` | 数読み + `き` |
 | `ben_service` | suffix | `便` | 数読み + `びん` |
 | `ban_chi` | suffix | `番地` | 数読み + `ばんち` |
 | `bu` | suffix | `部` | 数読み + `ぶ` |
@@ -178,6 +179,7 @@ const g = replaceInText("今日は第3版を1.2本買った");
 | `mon_question` | suffix | `問` | 数読み + `もん` |
 | `gyou_line` | suffix | `行` | 数読み + `ぎょう` |
 | `retsu_line` | suffix | `列` | 数読み + `れつ` |
+| `rin_wheel` | suffix | `輪` | 数読み + `りん` |
 | `kuchi` | suffix | `口` | 数読み + `くち` |
 | `kire` | suffix | `切れ`, `切` | 数読み + `きれ` |
 | `tama` | suffix | `玉` | 数読み + `たま` |
@@ -221,6 +223,7 @@ const g = replaceInText("今日は第3版を1.2本買った");
 | `hiki` | suffix | `匹` | `ひき/びき/ぴき` |
 | `hai` | suffix | `杯` | `はい/ばい/ぱい` |
 | `fun` | suffix | `分` | `ふん/ぷん` |
+| `ho_step` | suffix | `歩` | `ほ/ぽ` |
 
 ### `exceptions_first`（例外を優先し、未定義は fallback）
 

@@ -176,6 +176,15 @@
         "suffixReading": ["き"]
       }
     },
+    "ki_period": {
+      "surface": {
+        "suffix": ["期"]
+      },
+      "compose": {
+        "type": "concat",
+        "suffixReading": ["き"]
+      }
+    },
     "ben_service": {
       "surface": {
         "suffix": ["便"]
@@ -463,6 +472,15 @@
       "compose": {
         "type": "concat",
         "suffixReading": ["れつ"]
+      }
+    },
+    "rin_wheel": {
+      "surface": {
+        "suffix": ["輪"]
+      },
+      "compose": {
+        "type": "concat",
+        "suffixReading": ["りん"]
       }
     },
     "kuchi": {
@@ -1326,6 +1344,19 @@
         "forms": {
           "h": ["ふん"],
           "p": ["ぷん"]
+        }
+      }
+    },
+    "ho_step": {
+      "surface": {
+        "suffix": ["歩"]
+      },
+      "compose": {
+        "type": "pattern",
+        "patternId": "fun_p_forms",
+        "forms": {
+          "h": ["ほ"],
+          "p": ["ぽ"]
         }
       }
     }
