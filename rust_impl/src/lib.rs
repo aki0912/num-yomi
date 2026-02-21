@@ -283,8 +283,14 @@ struct RuntimeRules {
     suffix_markers_by_tail: HashMap<char, Vec<CounterMarker>>,
 }
 
+struct ReplaceMarkerIndex {
+    by_first_char: HashMap<char, Vec<&'static str>>,
+    marker_chars: HashSet<char>,
+}
+
 static RUNTIME_RULES: OnceLock<RuntimeRules> = OnceLock::new();
 static REPLACE_MARKERS: OnceLock<Vec<&'static str>> = OnceLock::new();
+static REPLACE_MARKER_INDEX: OnceLock<ReplaceMarkerIndex> = OnceLock::new();
 thread_local! {
     static READ_LAST_CACHE: RefCell<Option<(usize, String, Option<Arc<str>>)>> = const { RefCell::new(None) };
     static REPLACE_LAST_CACHE: RefCell<Option<(usize, String, Arc<str>)>> = const { RefCell::new(None) };
@@ -366,6 +372,31 @@ fn replace_markers() -> &'static Vec<&'static str> {
         }
         markers.sort_by(|a, b| b.len().cmp(&a.len()));
         markers
+    })
+}
+
+fn replace_marker_index() -> &'static ReplaceMarkerIndex {
+    REPLACE_MARKER_INDEX.get_or_init(|| {
+        let markers = replace_markers();
+        let mut by_first_char: HashMap<char, Vec<&'static str>> = HashMap::new();
+        let mut marker_chars: HashSet<char> = HashSet::new();
+
+        for marker in markers.iter().copied() {
+            for ch in marker.chars() {
+                marker_chars.insert(ch);
+            }
+            if let Some(head) = marker.chars().next() {
+                by_first_char.entry(head).or_default().push(marker);
+            }
+        }
+        for entries in by_first_char.values_mut() {
+            entries.sort_by(|a, b| b.len().cmp(&a.len()));
+        }
+
+        ReplaceMarkerIndex {
+            by_first_char,
+            marker_chars,
+        }
     })
 }
 
@@ -798,7 +829,7 @@ fn replace_in_text_with_options(input: &str, options: &ReadOptions, rules: &Runt
 
     let positions: Vec<(usize, char)> = input.char_indices().collect();
     let char_len = positions.len();
-    let markers = replace_markers();
+    let marker_index = replace_marker_index();
     let mut out = String::with_capacity(input.len());
     let mut index = 0usize;
     let mut previous_counter_id: Option<&'static str> = None;
@@ -821,7 +852,17 @@ fn replace_in_text_with_options(input: &str, options: &ReadOptions, rules: &Runt
             options,
         );
 
-        let max_end = std::cmp::min(char_len, index + MAX_REPLACE_SPAN);
+        let max_span_end = std::cmp::min(char_len, index + MAX_REPLACE_SPAN);
+        let mut max_end = index;
+        while max_end < max_span_end && is_replace_fragment_char(positions[max_end].1, &marker_index.marker_chars) {
+            max_end += 1;
+        }
+        if max_end == index {
+            out.push(ch);
+            index += 1;
+            continue;
+        }
+
         let mut matched: Option<(usize, usize, ReadWithCounter)> = None;
         for end in (index + 1..=max_end).rev() {
             let end_byte = if end < char_len {
@@ -833,13 +874,10 @@ fn replace_in_text_with_options(input: &str, options: &ReadOptions, rules: &Runt
             if fragment.chars().next_back().is_some_and(char::is_whitespace) {
                 continue;
             }
-            if !has_replace_trigger(fragment) {
-                continue;
-            }
             if !contains_numeric_char(fragment) {
                 continue;
             }
-            if !contains_marker(fragment, markers) {
+            if !contains_marker(fragment, marker_index) {
                 if !should_convert_bare_number_fragment(input, start_byte, end_byte, fragment)
                     && !is_tai_expression_fragment(fragment)
                 {
@@ -917,84 +955,12 @@ fn detect_counter<'a>(input: &'a str, rules: &RuntimeRules) -> Option<CounterMat
     None
 }
 
-fn has_replace_trigger(input: &str) -> bool {
-    input.chars().any(|ch| {
-        ch == '$'
-            || ch == '¥'
-            || ch == '￥'
-            || ch == '第'
-            || ch.is_ascii_digit()
-            || ('０'..='９').contains(&ch)
-            || matches!(
-                ch,
-                '零'
-                    | '〇'
-                    | '一'
-                    | '二'
-                    | '三'
-                    | '四'
-                    | '五'
-                    | '六'
-                    | '七'
-                    | '八'
-                    | '九'
-                    | '十'
-                    | '百'
-                    | '千'
-                    | '万'
-                    | '億'
-                    | '兆'
-                    | '京'
-            )
-    })
-}
-
-fn contains_numeric_char(input: &str) -> bool {
-    input.chars().any(|ch| {
-        ch.is_ascii_digit()
-            || ('０'..='９').contains(&ch)
-            || matches!(
-                ch,
-                '零'
-                    | '〇'
-                    | '一'
-                    | '二'
-                    | '三'
-                    | '四'
-                    | '五'
-                    | '六'
-                    | '七'
-                    | '八'
-                    | '九'
-                    | '十'
-                    | '百'
-                    | '千'
-                    | '万'
-                    | '億'
-                    | '兆'
-                    | '京'
-            )
-    })
-}
-
-fn contains_marker(input: &str, markers: &[&str]) -> bool {
-    markers.iter().any(|marker| input.contains(marker))
-}
-
-fn is_candidate_start(ch: char) -> bool {
+fn is_numeric_char(ch: char) -> bool {
     ch.is_ascii_digit()
         || ('０'..='９').contains(&ch)
         || matches!(
             ch,
-            '+'
-                | '-'
-                | '＋'
-                | '－'
-                | '$'
-                | '¥'
-                | '￥'
-                | '第'
-                | '零'
+            '零'
                 | '〇'
                 | '一'
                 | '二'
@@ -1013,6 +979,38 @@ fn is_candidate_start(ch: char) -> bool {
                 | '兆'
                 | '京'
         )
+}
+
+fn is_replace_fragment_char(ch: char, marker_chars: &HashSet<char>) -> bool {
+    is_numeric_char(ch)
+        || marker_chars.contains(&ch)
+        || matches!(
+            ch,
+            '+' | '-' | '＋' | '－' | '$' | '¥' | '￥' | '.' | '．' | ',' | '，' | '対'
+        )
+}
+
+fn contains_numeric_char(input: &str) -> bool {
+    input.chars().any(is_numeric_char)
+}
+
+fn contains_marker(input: &str, marker_index: &ReplaceMarkerIndex) -> bool {
+    for (offset, ch) in input.char_indices() {
+        let Some(markers) = marker_index.by_first_char.get(&ch) else {
+            continue;
+        };
+        for marker in markers {
+            if input[offset..].starts_with(marker) {
+                return true;
+            }
+        }
+    }
+    false
+}
+
+fn is_candidate_start(ch: char) -> bool {
+    is_numeric_char(ch)
+        || matches!(ch, '+' | '-' | '＋' | '－' | '$' | '¥' | '￥' | '第')
 }
 
 fn has_parsable_number_text(input: &str) -> bool {

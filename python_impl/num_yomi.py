@@ -54,8 +54,8 @@ DECIMAL_POINT_TOKEN = "てん"
 COUNTER_PREFIXES: List[Tuple[str, List[str]]] = [("第", ["だい"])]
 COUNTER_POSTFIXES: List[Tuple[str, List[str]]] = [("目", ["め"]), ("め", ["め"])]
 KANJI_INT_CHARS_REPLACE = set("零〇一二三四五六七八九十百千万億兆京")
-REPLACE_TRIGGER_RE = re.compile(r"[0-9０-９$¥￥第零〇一二三四五六七八九十百千万億兆京]")
-CANDIDATE_START_RE = re.compile(r"[0-9０-９+\-＋－$¥￥第零〇一二三四五六七八九十百千万億兆京]")
+CANDIDATE_EXTRA_START_CHARS = set("+-＋－$¥￥第")
+REPLACE_EXTRA_FRAGMENT_CHARS = set("+-＋－$¥￥.,，．対")
 MAX_REPLACE_SPAN = 64
 SINGLE_KANJI_DIGITS = set("零〇一二三四五六七八九")
 HAN_CHAR_RE = re.compile(r"[\u3400-\u4DBF\u4E00-\u9FFF\uF900-\uFAFF]")
@@ -215,17 +215,55 @@ def collect_replace_markers(counter_defs: Dict[str, Any]) -> List[str]:
     return sorted(markers, key=len, reverse=True)
 
 
+def build_replace_marker_index(markers: List[str]) -> Tuple[Dict[str, Tuple[str, ...]], Set[str]]:
+    by_first_char: Dict[str, List[str]] = {}
+    marker_char_set: Set[str] = set()
+    for marker in markers:
+        if marker == "":
+            continue
+        marker_char_set.update(marker)
+        first = marker[0]
+        by_first_char.setdefault(first, []).append(marker)
+    return (
+        {head: tuple(sorted(entries, key=len, reverse=True)) for head, entries in by_first_char.items()},
+        marker_char_set,
+    )
+
+
+def is_numeric_char(ch: Optional[str]) -> bool:
+    if ch is None:
+        return False
+    return ch in KANJI_INT_CHARS_REPLACE or ("0" <= ch <= "9") or ("０" <= ch <= "９")
+
+
 def contains_numeric_char(input_text: str) -> bool:
     for ch in input_text:
-        if ch in KANJI_INT_CHARS_REPLACE:
-            return True
-        if ("0" <= ch <= "9") or ("０" <= ch <= "９"):
+        if is_numeric_char(ch):
             return True
     return False
 
 
-def contains_marker(input_text: str, markers: List[str]) -> bool:
-    return any(marker in input_text for marker in markers)
+def is_candidate_start_char(ch: Optional[str]) -> bool:
+    if ch is None:
+        return False
+    return is_numeric_char(ch) or ch in CANDIDATE_EXTRA_START_CHARS
+
+
+def is_replace_fragment_char(ch: Optional[str], marker_char_set: Set[str]) -> bool:
+    if ch is None:
+        return False
+    return is_numeric_char(ch) or ch in REPLACE_EXTRA_FRAGMENT_CHARS or ch in marker_char_set
+
+
+def contains_marker(input_text: str, marker_index: Dict[str, Tuple[str, ...]]) -> bool:
+    for i, ch in enumerate(input_text):
+        entries = marker_index.get(ch)
+        if not entries:
+            continue
+        for marker in entries:
+            if input_text.startswith(marker, i):
+                return True
+    return False
 
 
 def options_cache_key(options: Optional[Dict[str, Any]]) -> str:
@@ -843,6 +881,7 @@ class YomiJaPy:
         self.prefixes_by_head, self.suffixes_by_tail = build_counter_index(self.counter_defs)
         self.unit_by_pow10 = {int(entry["pow10"]): entry["reading"] for entry in self.core["bigUnits"]}
         self.replace_markers = collect_replace_markers(self.counter_defs)
+        self.replace_marker_index, self.replace_marker_char_set = build_replace_marker_index(self.replace_markers)
         self._read_cache_no_options: OrderedDict[str, Optional[str]] = OrderedDict()
         self._read_cache_with_options: OrderedDict[str, Optional[str]] = OrderedDict()
         self._replace_cache_no_options: OrderedDict[str, str] = OrderedDict()
@@ -958,12 +997,22 @@ class YomiJaPy:
 
         while index < input_len:
             ch = input_text[index]
-            if CANDIDATE_START_RE.fullmatch(ch) is None:
+            if not is_candidate_start_char(ch):
                 out.append(ch)
                 index += 1
                 continue
 
-            max_end = min(input_len, index + MAX_REPLACE_SPAN)
+            max_span_end = min(input_len, index + MAX_REPLACE_SPAN)
+            max_end = index
+            while max_end < max_span_end and is_replace_fragment_char(
+                input_text[max_end], self.replace_marker_char_set
+            ):
+                max_end += 1
+            if max_end == index:
+                out.append(ch)
+                index += 1
+                continue
+
             matched_reading: Optional[str] = None
             matched_counter_id: Optional[str] = None
             matched_end = index
@@ -979,11 +1028,9 @@ class YomiJaPy:
                 fragment = input_text[index:end]
                 if fragment and fragment[-1].isspace():
                     continue
-                if REPLACE_TRIGGER_RE.search(fragment) is None:
-                    continue
                 if not contains_numeric_char(fragment):
                     continue
-                if not contains_marker(fragment, self.replace_markers):
+                if not contains_marker(fragment, self.replace_marker_index):
                     if not should_convert_bare_number_fragment(
                         input_text, index, end, fragment
                     ) and not is_tai_expression_fragment(fragment):

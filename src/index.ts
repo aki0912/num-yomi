@@ -25,6 +25,7 @@ const COUNTER_POSTFIXES = [
 ] as const;
 const KANJI_NUMERIC_CHARS = new Set(["零", "〇", "一", "二", "三", "四", "五", "六", "七", "八", "九", "十", "百", "千", "万", "億", "兆", "京"]);
 const CANDIDATE_EXTRA_START_CHARS = new Set(["+", "-", "＋", "－", "$", "¥", "￥", "第"]);
+const REPLACE_EXTRA_FRAGMENT_CHARS = new Set(["+", "-", "＋", "－", "$", "¥", "￥", ".", "．", ",", "，", "対"]);
 const MAX_REPLACE_SPAN = 64;
 const SINGLE_KANJI_DIGIT_RE = /^[零〇一二三四五六七八九]$/u;
 const HAN_CHAR_RE = /\p{Script=Han}/u;
@@ -41,6 +42,11 @@ interface CounterPrefixMatch {
 interface CounterPostfixMatch {
   marker: string;
   reading: readonly string[];
+}
+
+interface ReplaceMarkerIndex {
+  byFirstChar: Map<string, string[]>;
+  charSet: Set<string>;
 }
 
 interface ParsedNumberTokens {
@@ -223,12 +229,41 @@ function collectReplaceMarkers(rules: RuleBundle): string[] {
   return [...markers].sort((a, b) => b.length - a.length);
 }
 
+function buildReplaceMarkerIndex(markers: string[]): ReplaceMarkerIndex {
+  const byFirstChar = new Map<string, string[]>();
+  const charSet = new Set<string>();
+  for (const marker of markers) {
+    for (const ch of marker) {
+      charSet.add(ch);
+    }
+    const first = marker[0];
+    if (!first) {
+      continue;
+    }
+    const bucket = byFirstChar.get(first);
+    if (!bucket) {
+      byFirstChar.set(first, [marker]);
+      continue;
+    }
+    bucket.push(marker);
+  }
+
+  for (const bucket of byFirstChar.values()) {
+    bucket.sort((a, b) => b.length - a.length);
+  }
+  return { byFirstChar, charSet };
+}
+
+function isNumericChar(ch: string | undefined): boolean {
+  if (!ch) {
+    return false;
+  }
+  return KANJI_NUMERIC_CHARS.has(ch) || ((ch >= "0" && ch <= "9") || (ch >= "０" && ch <= "９"));
+}
+
 function containsNumericChar(text: string): boolean {
   for (const ch of text) {
-    if (KANJI_NUMERIC_CHARS.has(ch)) {
-      return true;
-    }
-    if ((ch >= "0" && ch <= "9") || (ch >= "０" && ch <= "９")) {
+    if (isNumericChar(ch)) {
       return true;
     }
   }
@@ -239,13 +274,26 @@ function isCandidateStartChar(ch: string | undefined): boolean {
   if (!ch) {
     return false;
   }
-  return KANJI_NUMERIC_CHARS.has(ch) || CANDIDATE_EXTRA_START_CHARS.has(ch) || ((ch >= "0" && ch <= "9") || (ch >= "０" && ch <= "９"));
+  return isNumericChar(ch) || CANDIDATE_EXTRA_START_CHARS.has(ch);
 }
 
-function containsMarker(text: string, markers: string[]): boolean {
-  for (const marker of markers) {
-    if (text.includes(marker)) {
-      return true;
+function isReplaceFragmentChar(ch: string | undefined, markerCharSet: Set<string>): boolean {
+  if (!ch) {
+    return false;
+  }
+  return isNumericChar(ch) || REPLACE_EXTRA_FRAGMENT_CHARS.has(ch) || markerCharSet.has(ch);
+}
+
+function containsMarker(text: string, markerIndex: ReplaceMarkerIndex): boolean {
+  for (let i = 0; i < text.length; i += 1) {
+    const bucket = markerIndex.byFirstChar.get(text[i]);
+    if (!bucket) {
+      continue;
+    }
+    for (const marker of bucket) {
+      if (text.startsWith(marker, i)) {
+        return true;
+      }
     }
   }
   return false;
@@ -393,7 +441,7 @@ function readMonthDayExpressionTokens(
 function replaceInTextCoreWithRules(
   input: string,
   rules: RuleBundle,
-  markers: string[],
+  markerIndex: ReplaceMarkerIndex,
   options: ReadOptions | undefined,
   includeDetails: boolean
 ): ReplaceResult {
@@ -417,7 +465,16 @@ function replaceInTextCoreWithRules(
       continue;
     }
 
-    const maxEnd = Math.min(input.length, index + MAX_REPLACE_SPAN);
+    const maxSpanEnd = Math.min(input.length, index + MAX_REPLACE_SPAN);
+    let maxEnd = index;
+    while (maxEnd < maxSpanEnd && isReplaceFragmentChar(input[maxEnd], markerIndex.charSet)) {
+      maxEnd += 1;
+    }
+    if (maxEnd === index) {
+      out += ch;
+      index += 1;
+      continue;
+    }
     let matchedReading: string | undefined;
     let matchedSource: string | undefined;
     let matchedCounterId: string | undefined;
@@ -437,7 +494,7 @@ function replaceInTextCoreWithRules(
       if (!containsNumericChar(fragment)) {
         continue;
       }
-      if (!containsMarker(fragment, markers)) {
+      if (!containsMarker(fragment, markerIndex)) {
         if (!shouldConvertBareNumberFragment(input, index, end, fragment) && !isTaiExpressionFragment(fragment)) {
           continue;
         }
@@ -479,12 +536,12 @@ function replaceInTextCoreWithRules(
   };
 }
 
-function replaceInTextDetailedWithRules(input: string, rules: RuleBundle, markers: string[], options?: ReadOptions): ReplaceResult {
-  return replaceInTextCoreWithRules(input, rules, markers, options, true);
+function replaceInTextDetailedWithRules(input: string, rules: RuleBundle, markerIndex: ReplaceMarkerIndex, options?: ReadOptions): ReplaceResult {
+  return replaceInTextCoreWithRules(input, rules, markerIndex, options, true);
 }
 
-function replaceInTextWithRules(input: string, rules: RuleBundle, markers: string[], options?: ReadOptions): string {
-  return replaceInTextCoreWithRules(input, rules, markers, options, false).output;
+function replaceInTextWithRules(input: string, rules: RuleBundle, markerIndex: ReplaceMarkerIndex, options?: ReadOptions): string {
+  return replaceInTextCoreWithRules(input, rules, markerIndex, options, false).output;
 }
 
 function resolveCounterCompose(rules: RuleBundle, counterId: string, options?: ReadOptions) {
@@ -709,6 +766,7 @@ function toReading(input: string, rules: RuleBundle, options?: ReadOptions): Rea
 
 function createYomiJaWithRules(rules: RuleBundle): YomiJa {
   const replaceMarkers = collectReplaceMarkers(rules);
+  const replaceMarkerIndex = buildReplaceMarkerIndex(replaceMarkers);
   const readNoOptionsCache = new LruCache<string | null>(READ_CACHE_LIMIT);
   const readWithOptionsCache = new LruCache<string | null>(READ_CACHE_LIMIT);
   const replaceNoOptionsCache = new LruCache<string>(REPLACE_CACHE_LIMIT);
@@ -771,7 +829,7 @@ function createYomiJaWithRules(rules: RuleBundle): YomiJa {
           replaceNoOptionsHot = { key: input, value: cached };
           return cached;
         }
-        const output = replaceInTextWithRules(input, rules, replaceMarkers, options);
+        const output = replaceInTextWithRules(input, rules, replaceMarkerIndex, options);
         replaceNoOptionsCache.set(input, output);
         replaceNoOptionsHot = { key: input, value: output };
         return output;
@@ -786,7 +844,7 @@ function createYomiJaWithRules(rules: RuleBundle): YomiJa {
         replaceWithOptionsHot = { key: cacheKey, value: cached };
         return cached;
       }
-      const output = replaceInTextWithRules(input, rules, replaceMarkers, options);
+      const output = replaceInTextWithRules(input, rules, replaceMarkerIndex, options);
       replaceWithOptionsCache.set(cacheKey, output);
       replaceWithOptionsHot = { key: cacheKey, value: output };
       return output;
@@ -801,7 +859,7 @@ function createYomiJaWithRules(rules: RuleBundle): YomiJa {
           replaceDetailedNoOptionsHot = { key: input, value: cached };
           return cloneReplaceResult(cached);
         }
-        const result = replaceInTextDetailedWithRules(input, rules, replaceMarkers, options);
+        const result = replaceInTextDetailedWithRules(input, rules, replaceMarkerIndex, options);
         replaceDetailedNoOptionsCache.set(input, result);
         replaceDetailedNoOptionsHot = { key: input, value: result };
         return cloneReplaceResult(result);
@@ -816,7 +874,7 @@ function createYomiJaWithRules(rules: RuleBundle): YomiJa {
         replaceDetailedWithOptionsHot = { key: cacheKey, value: cached };
         return cloneReplaceResult(cached);
       }
-      const result = replaceInTextDetailedWithRules(input, rules, replaceMarkers, options);
+      const result = replaceInTextDetailedWithRules(input, rules, replaceMarkerIndex, options);
       replaceDetailedWithOptionsCache.set(cacheKey, result);
       replaceDetailedWithOptionsHot = { key: cacheKey, value: result };
       return cloneReplaceResult(result);
