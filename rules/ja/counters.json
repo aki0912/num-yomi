@@ -28,6 +28,344 @@
         "suffixReading": ["ど"]
       }
     },
+    "mei": {
+      "surface": {
+        "suffix": ["名"]
+      },
+      "compose": {
+        "type": "concat",
+        "suffixReading": ["めい"]
+      }
+    },
+    "ken_item": {
+      "surface": {
+        "suffix": ["件"]
+      },
+      "compose": {
+        "type": "concat",
+        "suffixReading": ["けん"]
+      }
+    },
+    "tsuu": {
+      "surface": {
+        "suffix": ["通"]
+      },
+      "compose": {
+        "type": "concat",
+        "suffixReading": ["つう"]
+      }
+    },
+    "nen": {
+      "surface": {
+        "suffix": ["年"]
+      },
+      "compose": {
+        "type": "exceptions_first",
+        "exceptions": {
+          "4": ["よ", "ねん"],
+          "7": ["しち", "ねん"]
+        },
+        "fallback": {
+          "type": "concat",
+          "suffixReading": ["ねん"]
+        }
+      }
+    },
+    "byou": {
+      "surface": {
+        "suffix": ["秒"]
+      },
+      "compose": {
+        "type": "concat",
+        "suffixReading": ["びょう"]
+      }
+    },
+    "jikan": {
+      "surface": {
+        "suffix": ["時間"]
+      },
+      "compose": {
+        "type": "exceptions_first",
+        "exceptions": {
+          "4": ["よ", "じかん"],
+          "7": ["しち", "じかん"]
+        },
+        "fallback": {
+          "type": "concat",
+          "suffixReading": ["じかん"]
+        }
+      }
+    },
+    "shuukan": {
+      "surface": {
+        "suffix": ["週間"]
+      },
+      "compose": {
+        "type": "concat",
+        "suffixReading": ["しゅうかん"]
+      }
+    },
+    "page": {
+      "surface": {
+        "suffix": ["ページ", "頁"]
+      },
+      "compose": {
+        "type": "concat",
+        "suffixReading": ["ぺーじ"]
+      }
+    },
+    "bu": {
+      "surface": {
+        "suffix": ["部"]
+      },
+      "compose": {
+        "type": "concat",
+        "suffixReading": ["ぶ"]
+      }
+    },
+    "kou_school": {
+      "surface": {
+        "suffix": ["校"]
+      },
+      "compose": {
+        "type": "concat",
+        "suffixReading": ["こう"]
+      }
+    },
+    "to_building": {
+      "surface": {
+        "suffix": ["棟"]
+      },
+      "compose": {
+        "type": "concat",
+        "suffixReading": ["とう"]
+      }
+    },
+    "ko_house": {
+      "surface": {
+        "suffix": ["戸"]
+      },
+      "compose": {
+        "type": "concat",
+        "suffixReading": ["こ"]
+      }
+    },
+    "setai": {
+      "surface": {
+        "suffix": ["世帯"]
+      },
+      "compose": {
+        "type": "concat",
+        "suffixReading": ["せたい"]
+      }
+    },
+    "gou": {
+      "surface": {
+        "suffix": ["号"]
+      },
+      "compose": {
+        "type": "concat",
+        "suffixReading": ["ごう"]
+      }
+    },
+    "sen_battle": {
+      "surface": {
+        "suffix": ["戦"]
+      },
+      "compose": {
+        "type": "concat",
+        "suffixReading": ["せん"]
+      }
+    },
+    "kyoku_music": {
+      "surface": {
+        "suffix": ["曲"]
+      },
+      "compose": {
+        "type": "concat",
+        "suffixReading": ["きょく"]
+      }
+    },
+    "dan": {
+      "surface": {
+        "suffix": ["段"]
+      },
+      "compose": {
+        "type": "concat",
+        "suffixReading": ["だん"]
+      }
+    },
+    "shou": {
+      "surface": {
+        "suffix": ["章"]
+      },
+      "compose": {
+        "type": "concat",
+        "suffixReading": ["しょう"]
+      }
+    },
+    "jou_article": {
+      "surface": {
+        "suffix": ["条"]
+      },
+      "compose": {
+        "type": "concat",
+        "suffixReading": ["じょう"]
+      }
+    },
+    "hen": {
+      "surface": {
+        "suffix": ["編"]
+      },
+      "compose": {
+        "type": "concat",
+        "suffixReading": ["へん"]
+      }
+    },
+    "setsu": {
+      "surface": {
+        "suffix": ["節"]
+      },
+      "compose": {
+        "type": "concat",
+        "suffixReading": ["せつ"]
+      }
+    },
+    "men_surface": {
+      "surface": {
+        "suffix": ["面"]
+      },
+      "compose": {
+        "type": "concat",
+        "suffixReading": ["めん"]
+      }
+    },
+    "ten_point": {
+      "surface": {
+        "suffix": ["点"]
+      },
+      "compose": {
+        "type": "concat",
+        "suffixReading": ["てん"]
+      }
+    },
+    "hyou_vote": {
+      "surface": {
+        "suffix": ["票"]
+      },
+      "compose": {
+        "type": "concat",
+        "suffixReading": ["ひょう"]
+      }
+    },
+    "ji_char": {
+      "surface": {
+        "suffix": ["字"]
+      },
+      "compose": {
+        "type": "concat",
+        "suffixReading": ["じ"]
+      }
+    },
+    "go_word": {
+      "surface": {
+        "suffix": ["語"]
+      },
+      "compose": {
+        "type": "concat",
+        "suffixReading": ["ご"]
+      }
+    },
+    "mon_question": {
+      "surface": {
+        "suffix": ["問"]
+      },
+      "compose": {
+        "type": "concat",
+        "suffixReading": ["もん"]
+      }
+    },
+    "gyou_line": {
+      "surface": {
+        "suffix": ["行"]
+      },
+      "compose": {
+        "type": "concat",
+        "suffixReading": ["ぎょう"]
+      }
+    },
+    "ryou": {
+      "surface": {
+        "suffix": ["両"]
+      },
+      "compose": {
+        "type": "concat",
+        "suffixReading": ["りょう"]
+      }
+    },
+    "ki_aircraft": {
+      "surface": {
+        "suffix": ["機"]
+      },
+      "compose": {
+        "type": "concat",
+        "suffixReading": ["き"]
+      }
+    },
+    "seki_ship": {
+      "surface": {
+        "suffix": ["隻"]
+      },
+      "compose": {
+        "type": "concat",
+        "suffixReading": ["せき"]
+      }
+    },
+    "sou_ship": {
+      "surface": {
+        "suffix": ["艘"]
+      },
+      "compose": {
+        "type": "concat",
+        "suffixReading": ["そう"]
+      }
+    },
+    "fukuro": {
+      "surface": {
+        "suffix": ["袋"]
+      },
+      "compose": {
+        "type": "concat",
+        "suffixReading": ["ふくろ"]
+      }
+    },
+    "tsubu": {
+      "surface": {
+        "suffix": ["粒"]
+      },
+      "compose": {
+        "type": "concat",
+        "suffixReading": ["つぶ"]
+      }
+    },
+    "teki_drop": {
+      "surface": {
+        "suffix": ["滴"]
+      },
+      "compose": {
+        "type": "concat",
+        "suffixReading": ["てき"]
+      }
+    },
+    "jou_tablet": {
+      "surface": {
+        "suffix": ["錠"]
+      },
+      "compose": {
+        "type": "concat",
+        "suffixReading": ["じょう"]
+      }
+    },
     "man_unit": {
       "surface": {
         "suffix": ["万"]
@@ -118,7 +456,9 @@
         "type": "exceptions_first",
         "exceptions": {
           "1": ["ひとり"],
-          "2": ["ふたり"]
+          "2": ["ふたり"],
+          "4": ["よ", "にん"],
+          "7": ["しち", "にん"]
         },
         "fallback": {
           "type": "concat",
@@ -379,6 +719,133 @@
         "fallback": {
           "type": "concat",
           "suffixReading": ["かん"]
+        }
+      }
+    },
+    "sha": {
+      "surface": {
+        "suffix": ["社"]
+      },
+      "compose": {
+        "type": "exceptions_first",
+        "exceptions": {
+          "1": ["いっ", "しゃ"],
+          "8": ["はっ", "しゃ"],
+          "10": ["じゅっ", "しゃ"]
+        },
+        "fallback": {
+          "type": "concat",
+          "suffixReading": ["しゃ"]
+        }
+      }
+    },
+    "ka_getsu": {
+      "surface": {
+        "suffix": ["ヶ月", "か月", "カ月", "ヵ月", "ケ月", "箇月"]
+      },
+      "compose": {
+        "type": "exceptions_first",
+        "exceptions": {
+          "1": ["いっ", "かげつ"],
+          "6": ["ろっ", "かげつ"],
+          "8": ["はっ", "かげつ"],
+          "10": ["じゅっ", "かげつ"]
+        },
+        "fallback": {
+          "type": "concat",
+          "suffixReading": ["かげつ"]
+        }
+      }
+    },
+    "ka_sho": {
+      "surface": {
+        "suffix": ["箇所", "か所", "カ所", "ヶ所", "ヵ所"]
+      },
+      "compose": {
+        "type": "exceptions_first",
+        "exceptions": {
+          "1": ["いっ", "かしょ"],
+          "6": ["ろっ", "かしょ"],
+          "8": ["はっ", "かしょ"],
+          "10": ["じゅっ", "かしょ"]
+        },
+        "fallback": {
+          "type": "concat",
+          "suffixReading": ["かしょ"]
+        }
+      }
+    },
+    "kai_me": {
+      "surface": {
+        "suffix": ["回目"]
+      },
+      "compose": {
+        "type": "exceptions_first",
+        "exceptions": {
+          "1": ["いっ", "かい", "め"],
+          "6": ["ろっ", "かい", "め"],
+          "8": ["はっ", "かい", "め"],
+          "10": ["じゅっ", "かい", "め"]
+        },
+        "fallback": {
+          "type": "concat",
+          "suffixReading": ["かい", "め"]
+        }
+      }
+    },
+    "ka_koku": {
+      "surface": {
+        "suffix": ["ヶ国", "ヵ国", "ケ国", "か国", "カ国", "箇国"]
+      },
+      "compose": {
+        "type": "exceptions_first",
+        "exceptions": {
+          "1": ["いっ", "かこく"],
+          "6": ["ろっ", "かこく"],
+          "8": ["はっ", "かこく"],
+          "10": ["じゅっ", "かこく"]
+        },
+        "fallback": {
+          "type": "concat",
+          "suffixReading": ["かこく"]
+        }
+      }
+    },
+    "paku": {
+      "surface": {
+        "suffix": ["泊"]
+      },
+      "compose": {
+        "type": "exceptions_first",
+        "exceptions": {
+          "1": ["いっ", "ぱく"],
+          "3": ["さん", "ぱく"],
+          "6": ["ろっ", "ぱく"],
+          "8": ["はっ", "ぱく"],
+          "10": ["じゅっ", "ぱく"]
+        },
+        "fallback": {
+          "type": "concat",
+          "suffixReading": ["はく"]
+        }
+      }
+    },
+    "hatsu_shot": {
+      "surface": {
+        "suffix": ["発"]
+      },
+      "compose": {
+        "type": "exceptions_first",
+        "exceptions": {
+          "1": ["いっ", "ぱつ"],
+          "3": ["さん", "ぱつ"],
+          "6": ["ろっ", "ぱつ"],
+          "8": ["はっ", "ぱつ"],
+          "10": ["じゅっ", "ぱつ"]
+        },
+        "fallback": {
+          "type": "concat",
+          "suffixReading": ["はつ"]
         }
       }
     },

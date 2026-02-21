@@ -132,6 +132,40 @@ const f = custom.read("$100");
 | `yen` | prefix + suffix | `¥`, `￥`, `円` | 数読み + `えん` |
 | `dollar` | prefix | `$` | 数読み + `どる` |
 | `celsius` | suffix | `℃`, `°C` | 数読み + `ど` |
+| `mei` | suffix | `名` | 数読み + `めい` |
+| `ken_item` | suffix | `件` | 数読み + `けん` |
+| `tsuu` | suffix | `通` | 数読み + `つう` |
+| `byou` | suffix | `秒` | 数読み + `びょう` |
+| `shuukan` | suffix | `週間` | 数読み + `しゅうかん` |
+| `page` | suffix | `ページ`, `頁` | 数読み + `ぺーじ` |
+| `bu` | suffix | `部` | 数読み + `ぶ` |
+| `kou_school` | suffix | `校` | 数読み + `こう` |
+| `to_building` | suffix | `棟` | 数読み + `とう` |
+| `ko_house` | suffix | `戸` | 数読み + `こ` |
+| `setai` | suffix | `世帯` | 数読み + `せたい` |
+| `gou` | suffix | `号` | 数読み + `ごう` |
+| `sen_battle` | suffix | `戦` | 数読み + `せん` |
+| `kyoku_music` | suffix | `曲` | 数読み + `きょく` |
+| `dan` | suffix | `段` | 数読み + `だん` |
+| `shou` | suffix | `章` | 数読み + `しょう` |
+| `jou_article` | suffix | `条` | 数読み + `じょう` |
+| `hen` | suffix | `編` | 数読み + `へん` |
+| `setsu` | suffix | `節` | 数読み + `せつ` |
+| `men_surface` | suffix | `面` | 数読み + `めん` |
+| `ten_point` | suffix | `点` | 数読み + `てん` |
+| `hyou_vote` | suffix | `票` | 数読み + `ひょう` |
+| `ji_char` | suffix | `字` | 数読み + `じ` |
+| `go_word` | suffix | `語` | 数読み + `ご` |
+| `mon_question` | suffix | `問` | 数読み + `もん` |
+| `gyou_line` | suffix | `行` | 数読み + `ぎょう` |
+| `ryou` | suffix | `両` | 数読み + `りょう` |
+| `ki_aircraft` | suffix | `機` | 数読み + `き` |
+| `seki_ship` | suffix | `隻` | 数読み + `せき` |
+| `sou_ship` | suffix | `艘` | 数読み + `そう` |
+| `fukuro` | suffix | `袋` | 数読み + `ふくろ` |
+| `tsubu` | suffix | `粒` | 数読み + `つぶ` |
+| `teki_drop` | suffix | `滴` | 数読み + `てき` |
+| `jou_tablet` | suffix | `錠` | 数読み + `じょう` |
 | `man_unit` | suffix | `万` | 数読み + `まん` |
 | `oku_unit` | suffix | `億` | 数読み + `おく` |
 | `cho_unit` | suffix | `兆` | 数読み + `ちょう` |
@@ -170,7 +204,17 @@ const f = custom.read("$100");
 | `kumi` | suffix | `組` | `1=ひとくみ`, `2=ふたくみ` |
 | `hako` | suffix | `箱` | `1=ひとはこ`, `3=さんぱこ` など |
 | `kan` | suffix | `巻` | `1/6/8/10` の促音 |
+| `sha` | suffix | `社` | `1/8/10` の促音 |
+| `ka_getsu` | suffix | `ヶ月`, `か月`, `カ月` ほか | `1/6/8/10` の促音 |
+| `ka_sho` | suffix | `箇所`, `か所`, `カ所` ほか | `1/6/8/10` の促音 |
+| `kai_me` | suffix | `回目` | `1/6/8/10` の促音 |
+| `ka_koku` | suffix | `ヶ国`, `か国`, `箇国` ほか | `1/6/8/10` の促音 |
+| `paku` | suffix | `泊` | `1/3/6/8/10` の半濁音化 |
+| `hatsu_shot` | suffix | `発` | `1/3/6/8/10` の半濁音化 |
 | `tsu` | suffix | `つ` | `1..10` が和語（`ひとつ` など） |
+| `nen` | suffix | `年` | `4=よねん`, `7=しちねん` |
+| `jikan` | suffix | `時間` | `4=よじかん`, `7=しちじかん` |
+| `nin` | suffix | `人` | `1=ひとり`, `2=ふたり`, `4=よにん`, `7=しちにん` |
 | `month` | suffix | `月` | `4=しがつ`, `7=しちがつ`, `9=くがつ` |
 | `ji` | suffix | `時` | `4=よじ`, `7=しちじ`, `9=くじ` |
 
