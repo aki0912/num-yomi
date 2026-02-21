@@ -63,7 +63,6 @@ function parseArgs(argv) {
     }
     if (arg === "--iterations") {
       parsed.iterations = argv[++i];
-      continue;
     }
   }
   return parsed;

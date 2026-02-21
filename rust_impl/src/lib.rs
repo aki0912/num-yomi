@@ -1,16 +1,12 @@
 #![allow(dead_code)]
 
-use std::cell::RefCell;
 use num_bigint::BigInt;
 use num_traits::{Signed, ToPrimitive, Zero};
-use serde_json::{json, Value};
+use serde_json::Value;
 use smallvec::{smallvec, SmallVec};
+use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
-use std::env;
-use std::fs;
-use std::path::{Path, PathBuf};
 use std::sync::{Arc, OnceLock};
-use std::time::Instant;
 use unicode_normalization::UnicodeNormalization;
 
 type Token = &'static str;
@@ -435,294 +431,6 @@ struct ReadWithCounter {
     counter_id: Option<&'static str>,
 }
 
-fn main() {
-    let args: Vec<String> = env::args().collect();
-    if args.len() < 2 {
-        print_usage();
-        std::process::exit(1);
-    }
-
-    let result = match args[1].as_str() {
-        "read" => run_read(&args[2..]),
-        "bench" => run_bench(&args[2..]),
-        _ => {
-            print_usage();
-            Err("Unknown command".to_string())
-        }
-    };
-
-    if let Err(e) = result {
-        eprintln!("{e}");
-        std::process::exit(1);
-    }
-}
-
-fn print_usage() {
-    eprintln!(
-        "Usage:\n  num-yomi-rust read <input> [--zero rei|zero] [--mode counter=mode] [--strict]\n  num-yomi-rust bench [--cases path] [--iterations N]"
-    );
-}
-
-fn run_read(args: &[String]) -> Result<(), String> {
-    if args.is_empty() {
-        return Err("read requires an input".to_string());
-    }
-
-    let input = args[0].clone();
-    let mut options = ReadOptions::default();
-
-    let mut i = 1;
-    while i < args.len() {
-        match args[i].as_str() {
-            "--zero" => {
-                i += 1;
-                if i >= args.len() {
-                    return Err("--zero expects rei or zero".to_string());
-                }
-                options.zero = Some(parse_zero_variant(&args[i])?);
-            }
-            "--mode" => {
-                i += 1;
-                if i >= args.len() {
-                    return Err("--mode expects counter=mode".to_string());
-                }
-                let value = &args[i];
-                let Some(eq_pos) = value.find('=') else {
-                    return Err("--mode expects counter=mode".to_string());
-                };
-                options.modes.push(ModeOverride {
-                    counter_id: value[..eq_pos].to_string(),
-                    mode_id: value[eq_pos + 1..].to_string(),
-                });
-            }
-            "--strict" => {
-                options.strict = true;
-            }
-            other => {
-                return Err(format!("Unknown flag: {other}"));
-            }
-        }
-        i += 1;
-    }
-
-    let rules = runtime_rules();
-    let result = read_with_options(&input, &options, rules)?;
-    match result {
-        Some(reading) => {
-            println!("{reading}");
-            Ok(())
-        }
-        None => Err("Unable to parse".to_string()),
-    }
-}
-
-#[derive(Debug)]
-struct BenchCase {
-    input: String,
-    expected: String,
-    options: ReadOptions,
-}
-
-fn run_bench(args: &[String]) -> Result<(), String> {
-    let mut cases_path = repo_root().join("test/cases.json");
-    let mut iterations: u64 = 20_000;
-
-    let mut i = 0;
-    while i < args.len() {
-        match args[i].as_str() {
-            "--cases" => {
-                i += 1;
-                if i >= args.len() {
-                    return Err("--cases requires a path".to_string());
-                }
-                cases_path = PathBuf::from(&args[i]);
-            }
-            "--iterations" => {
-                i += 1;
-                if i >= args.len() {
-                    return Err("--iterations requires a number".to_string());
-                }
-                iterations = args[i]
-                    .parse::<u64>()
-                    .map_err(|_| "--iterations must be a positive integer".to_string())?;
-                if iterations == 0 {
-                    return Err("--iterations must be > 0".to_string());
-                }
-            }
-            other => {
-                return Err(format!("Unknown flag: {other}"));
-            }
-        }
-        i += 1;
-    }
-
-    let cases = load_bench_cases(&cases_path)?;
-    let rules = runtime_rules();
-
-    let mut out_cases: Vec<Value> = Vec::new();
-    let mut total_ns: u128 = 0;
-
-    for (index, case) in cases.iter().enumerate() {
-        let warmup = read_with_options(&case.input, &case.options, rules)?;
-        if warmup.as_deref() != Some(case.expected.as_str()) {
-            return Err(format!(
-                "Case mismatch at index {index}: in={} expected={} actual={:?}",
-                case.input, case.expected, warmup
-            ));
-        }
-
-        let start = Instant::now();
-        for _ in 0..iterations {
-            let _ = read_with_options(&case.input, &case.options, rules)?;
-        }
-        let elapsed_ns = start.elapsed().as_nanos();
-        total_ns += elapsed_ns;
-
-        let avg_ns = elapsed_ns / iterations as u128;
-        out_cases.push(json!({
-            "index": index,
-            "input": case.input,
-            "expected": case.expected,
-            "avg_ns": avg_ns as u64,
-            "total_ns": elapsed_ns as u64,
-        }));
-    }
-
-    println!(
-        "{}",
-        json!({
-            "impl": "rust",
-            "iterations": iterations,
-            "cases": out_cases,
-            "total_ns": total_ns as u64,
-            "total_ms": (total_ns as f64) / 1_000_000.0,
-        })
-    );
-
-    Ok(())
-}
-
-fn load_bench_cases(path: &Path) -> Result<Vec<BenchCase>, String> {
-    let raw = fs::read_to_string(path)
-        .map_err(|e| format!("Failed to read cases file {}: {e}", path.display()))?;
-    let value: Value = serde_json::from_str(&raw)
-        .map_err(|e| format!("Failed to parse cases JSON {}: {e}", path.display()))?;
-
-    let arr = value
-        .as_array()
-        .ok_or_else(|| "cases JSON must be an array".to_string())?;
-
-    let mut out = Vec::with_capacity(arr.len());
-    for (index, case) in arr.iter().enumerate() {
-        let obj = case
-            .as_object()
-            .ok_or_else(|| format!("Case at index {index} is not an object"))?;
-
-        let input = obj
-            .get("in")
-            .and_then(Value::as_str)
-            .ok_or_else(|| format!("Case {index} missing string field: in"))?
-            .to_string();
-        let expected = obj
-            .get("out")
-            .and_then(Value::as_str)
-            .ok_or_else(|| format!("Case {index} missing string field: out"))?
-            .to_string();
-
-        let options = parse_options_from_value(obj.get("opts"))?;
-        out.push(BenchCase {
-            input,
-            expected,
-            options,
-        });
-    }
-
-    Ok(out)
-}
-
-fn parse_options_from_value(value: Option<&Value>) -> Result<ReadOptions, String> {
-    let mut options = ReadOptions::default();
-    let Some(value) = value else {
-        return Ok(options);
-    };
-    let obj = value
-        .as_object()
-        .ok_or_else(|| "opts must be an object".to_string())?;
-
-    if let Some(strict) = obj.get("strict").and_then(Value::as_bool) {
-        options.strict = strict;
-    }
-
-    if let Some(variant) = obj.get("variant") {
-        let vobj = variant
-            .as_object()
-            .ok_or_else(|| "opts.variant must be an object".to_string())?;
-
-        if let Some(zero) = vobj.get("zero").and_then(Value::as_str) {
-            options.zero = Some(parse_zero_variant(zero)?);
-        }
-        if let Some(four) = vobj.get("four").and_then(Value::as_str) {
-            options.four = Some(parse_four_variant(four)?);
-        }
-        if let Some(seven) = vobj.get("seven").and_then(Value::as_str) {
-            options.seven = Some(parse_seven_variant(seven)?);
-        }
-        if let Some(nine) = vobj.get("nine").and_then(Value::as_str) {
-            options.nine = Some(parse_nine_variant(nine)?);
-        }
-    }
-
-    if let Some(mode) = obj.get("mode") {
-        let mobj = mode
-            .as_object()
-            .ok_or_else(|| "opts.mode must be an object".to_string())?;
-
-        for (counter_id, mode_id_value) in mobj {
-            let mode_id = mode_id_value
-                .as_str()
-                .ok_or_else(|| "opts.mode values must be strings".to_string())?;
-            options.modes.push(ModeOverride {
-                counter_id: counter_id.clone(),
-                mode_id: mode_id.to_string(),
-            });
-        }
-    }
-
-    Ok(options)
-}
-
-fn parse_zero_variant(input: &str) -> Result<ZeroVariant, String> {
-    match input {
-        "rei" => Ok(ZeroVariant::Rei),
-        "zero" => Ok(ZeroVariant::Zero),
-        _ => Err(format!("Invalid zero variant: {input}")),
-    }
-}
-
-fn parse_four_variant(input: &str) -> Result<FourVariant, String> {
-    match input {
-        "yon" => Ok(FourVariant::Yon),
-        "shi" => Ok(FourVariant::Shi),
-        _ => Err(format!("Invalid four variant: {input}")),
-    }
-}
-
-fn parse_seven_variant(input: &str) -> Result<SevenVariant, String> {
-    match input {
-        "nana" => Ok(SevenVariant::Nana),
-        "shichi" => Ok(SevenVariant::Shichi),
-        _ => Err(format!("Invalid seven variant: {input}")),
-    }
-}
-
-fn parse_nine_variant(input: &str) -> Result<NineVariant, String> {
-    match input {
-        "kyu" => Ok(NineVariant::Kyu),
-        "ku" => Ok(NineVariant::Ku),
-        _ => Err(format!("Invalid nine variant: {input}")),
-    }
-}
-
 fn read_with_options_detailed(
     input: &str,
     options: &ReadOptions,
@@ -782,7 +490,8 @@ fn read_with_options_detailed(
             (base_tokens, None)
         };
 
-        let final_tokens = prepend_counter_prefix(append_counter_postfix(final_tokens, postfix), prefix);
+        let final_tokens =
+            prepend_counter_prefix(append_counter_postfix(final_tokens, postfix), prefix);
         return Ok(Some(ReadWithCounter {
             reading: join_tokens(&final_tokens),
             counter_id,
@@ -807,7 +516,8 @@ fn read_with_options_detailed(
         (base_tokens, None)
     };
 
-    let final_tokens = prepend_counter_prefix(append_counter_postfix(final_tokens, postfix), prefix);
+    let final_tokens =
+        prepend_counter_prefix(append_counter_postfix(final_tokens, postfix), prefix);
     Ok(Some(ReadWithCounter {
         reading: join_tokens(&final_tokens),
         counter_id,
@@ -822,7 +532,11 @@ fn read_with_options(
     Ok(read_with_options_detailed(input, options, rules)?.map(|result| result.reading))
 }
 
-fn replace_in_text_with_options(input: &str, options: &ReadOptions, rules: &RuntimeRules) -> String {
+fn replace_in_text_with_options(
+    input: &str,
+    options: &ReadOptions,
+    rules: &RuntimeRules,
+) -> String {
     if input.is_empty() {
         return String::new();
     }
@@ -854,7 +568,9 @@ fn replace_in_text_with_options(input: &str, options: &ReadOptions, rules: &Runt
 
         let max_span_end = std::cmp::min(char_len, index + MAX_REPLACE_SPAN);
         let mut max_end = index;
-        while max_end < max_span_end && is_replace_fragment_char(positions[max_end].1, &marker_index.marker_chars) {
+        while max_end < max_span_end
+            && is_replace_fragment_char(positions[max_end].1, &marker_index.marker_chars)
+        {
             max_end += 1;
         }
         if max_end == index {
@@ -871,7 +587,11 @@ fn replace_in_text_with_options(input: &str, options: &ReadOptions, rules: &Runt
                 input.len()
             };
             let fragment = &input[start_byte..end_byte];
-            if fragment.chars().next_back().is_some_and(char::is_whitespace) {
+            if fragment
+                .chars()
+                .next_back()
+                .is_some_and(char::is_whitespace)
+            {
                 continue;
             }
             if !contains_numeric_char(fragment) {
@@ -885,7 +605,9 @@ fn replace_in_text_with_options(input: &str, options: &ReadOptions, rules: &Runt
                 }
             }
 
-            if let Ok(Some(reading)) = read_with_options_detailed(fragment, &contextual_options, rules) {
+            if let Ok(Some(reading)) =
+                read_with_options_detailed(fragment, &contextual_options, rules)
+            {
                 matched = Some((end, end_byte, reading));
                 break;
             }
@@ -960,8 +682,7 @@ fn is_numeric_char(ch: char) -> bool {
         || ('０'..='９').contains(&ch)
         || matches!(
             ch,
-            '零'
-                | '〇'
+            '零' | '〇'
                 | '一'
                 | '二'
                 | '三'
@@ -1009,8 +730,7 @@ fn contains_marker(input: &str, marker_index: &ReplaceMarkerIndex) -> bool {
 }
 
 fn is_candidate_start(ch: char) -> bool {
-    is_numeric_char(ch)
-        || matches!(ch, '+' | '-' | '＋' | '－' | '$' | '¥' | '￥' | '第')
+    is_numeric_char(ch) || matches!(ch, '+' | '-' | '＋' | '－' | '$' | '¥' | '￥' | '第')
 }
 
 fn has_parsable_number_text(input: &str) -> bool {
@@ -1144,7 +864,10 @@ fn read_month_day_expression(
         return Ok(None);
     }
 
-    Ok(Some(format!("{}{}", month_reading.reading, day_reading.reading)))
+    Ok(Some(format!(
+        "{}{}",
+        month_reading.reading, day_reading.reading
+    )))
 }
 
 fn is_tai_expression_fragment(fragment: &str) -> bool {
@@ -1972,7 +1695,10 @@ fn apply_counter_decimal(
     };
 
     let Some(suffix) = resolve_decimal_compose_suffix(compose, rules) else {
-        return Err(format!("Decimal values with counter '{}' are not supported", counter.id));
+        return Err(format!(
+            "Decimal values with counter '{}' are not supported",
+            counter.id
+        ));
     };
 
     let mut out = TokenBuf::with_capacity(base_tokens.len() + suffix.len());
@@ -2114,13 +1840,6 @@ fn join_tokens(tokens: &[Token]) -> String {
     out
 }
 
-fn repo_root() -> PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR"))
-        .parent()
-        .expect("workspace root")
-        .to_path_buf()
-}
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ZeroVariantOpt {
     Rei,
@@ -2159,6 +1878,101 @@ impl ReadConfig {
     pub fn with_mode(mut self, counter_id: impl Into<String>, mode_id: impl Into<String>) -> Self {
         self.modes.push((counter_id.into(), mode_id.into()));
         self
+    }
+}
+
+pub fn parse_zero_variant_opt(input: &str) -> Result<ZeroVariantOpt, String> {
+    match input {
+        "rei" => Ok(ZeroVariantOpt::Rei),
+        "zero" => Ok(ZeroVariantOpt::Zero),
+        _ => Err(format!("Invalid zero variant: {input}")),
+    }
+}
+
+pub fn parse_four_variant_opt(input: &str) -> Result<FourVariantOpt, String> {
+    match input {
+        "yon" => Ok(FourVariantOpt::Yon),
+        "shi" => Ok(FourVariantOpt::Shi),
+        _ => Err(format!("Invalid four variant: {input}")),
+    }
+}
+
+pub fn parse_seven_variant_opt(input: &str) -> Result<SevenVariantOpt, String> {
+    match input {
+        "nana" => Ok(SevenVariantOpt::Nana),
+        "shichi" => Ok(SevenVariantOpt::Shichi),
+        _ => Err(format!("Invalid seven variant: {input}")),
+    }
+}
+
+pub fn parse_nine_variant_opt(input: &str) -> Result<NineVariantOpt, String> {
+    match input {
+        "kyu" => Ok(NineVariantOpt::Kyu),
+        "ku" => Ok(NineVariantOpt::Ku),
+        _ => Err(format!("Invalid nine variant: {input}")),
+    }
+}
+
+pub fn parse_read_config(opts_value: Option<&Value>) -> Result<Option<ReadConfig>, String> {
+    let Some(opts) = opts_value else {
+        return Ok(None);
+    };
+
+    let obj = opts
+        .as_object()
+        .ok_or_else(|| "opts must be an object".to_string())?;
+
+    let mut config = ReadConfig::default();
+    let mut touched = false;
+
+    if let Some(strict) = obj.get("strict").and_then(Value::as_bool) {
+        config.strict = strict;
+        touched = true;
+    }
+
+    if let Some(variant) = obj.get("variant") {
+        let vobj = variant
+            .as_object()
+            .ok_or_else(|| "opts.variant must be an object".to_string())?;
+
+        if let Some(zero) = vobj.get("zero").and_then(Value::as_str) {
+            config.zero = Some(parse_zero_variant_opt(zero)?);
+            touched = true;
+        }
+
+        if let Some(four) = vobj.get("four").and_then(Value::as_str) {
+            config.four = Some(parse_four_variant_opt(four)?);
+            touched = true;
+        }
+
+        if let Some(seven) = vobj.get("seven").and_then(Value::as_str) {
+            config.seven = Some(parse_seven_variant_opt(seven)?);
+            touched = true;
+        }
+
+        if let Some(nine) = vobj.get("nine").and_then(Value::as_str) {
+            config.nine = Some(parse_nine_variant_opt(nine)?);
+            touched = true;
+        }
+    }
+
+    if let Some(mode) = obj.get("mode") {
+        let mobj = mode
+            .as_object()
+            .ok_or_else(|| "opts.mode must be an object".to_string())?;
+        for (counter_id, mode_id_value) in mobj {
+            let mode_id = mode_id_value
+                .as_str()
+                .ok_or_else(|| "opts.mode values must be strings".to_string())?;
+            config = config.with_mode(counter_id.clone(), mode_id.to_string());
+            touched = true;
+        }
+    }
+
+    if touched {
+        Ok(Some(config))
+    } else {
+        Ok(None)
     }
 }
 
@@ -2253,14 +2067,21 @@ pub fn read_shared(input: &str, config: Option<&ReadConfig>) -> Result<Option<Ar
     Ok(output)
 }
 
-pub fn replace_in_text_shared(input: &str, config: Option<&ReadConfig>) -> Result<Arc<str>, String> {
+pub fn replace_in_text_shared(
+    input: &str,
+    config: Option<&ReadConfig>,
+) -> Result<Arc<str>, String> {
     let config_key = config_ptr_key(config);
     if let Some(cached) = replace_last_cache_get_shared(config_key, input) {
         return Ok(cached);
     }
 
     let options = to_internal_options(config);
-    let output = Arc::<str>::from(replace_in_text_with_options(input, &options, runtime_rules()));
+    let output = Arc::<str>::from(replace_in_text_with_options(
+        input,
+        &options,
+        runtime_rules(),
+    ));
     replace_last_cache_set_shared(config_key, input, &output);
     Ok(output)
 }

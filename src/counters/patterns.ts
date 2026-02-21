@@ -18,7 +18,7 @@ export function applyTailPattern(pattern: PatternRule, tokens: ReadingToken[]): 
     }
 
     const nextTokens = [...tokens];
-    if (rule.rewriteTail && rule.rewriteTail[tail]) {
+    if (rule.rewriteTail?.[tail]) {
       nextTokens[nextTokens.length - 1] = rule.rewriteTail[tail];
     }
     return {

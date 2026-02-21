@@ -1,0 +1,12 @@
+[tool.ruff]
+target-version = "py311"
+exclude = [
+  "node_modules",
+  "dist",
+  "rust_impl/target",
+  "python_impl/generated_rules.py",
+]
+
+[tool.ruff.lint]
+select = ["E", "F", "I"]
+ignore = ["E402", "E501"]

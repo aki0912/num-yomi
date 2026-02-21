@@ -70,8 +70,12 @@ fn run() -> Result<(), String> {
 
     let input_text = fs::read_to_string(&input_path)
         .map_err(|e| format!("Failed to read input file {}: {e}", input_path.display()))?;
-    let expected_text = fs::read_to_string(&expected_path)
-        .map_err(|e| format!("Failed to read expected file {}: {e}", expected_path.display()))?;
+    let expected_text = fs::read_to_string(&expected_path).map_err(|e| {
+        format!(
+            "Failed to read expected file {}: {e}",
+            expected_path.display()
+        )
+    })?;
 
     let warmup = replace_in_text_shared(&input_text, None)?;
     if warmup.as_ref() != expected_text.as_str() {

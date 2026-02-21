@@ -30,7 +30,7 @@ const BIG_UNITS: Record<string, bigint> = {
 };
 
 function parseKansuji(input: string): bigint | null {
-  if (!/^[+\-]?[零〇一二三四五六七八九十百千万億兆京]+$/.test(input)) {
+  if (!/^[+-]?[零〇一二三四五六七八九十百千万億兆京]+$/.test(input)) {
     return null;
   }
 

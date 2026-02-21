@@ -32,6 +32,12 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Install Python lint tools
+        run: python3 -m pip install --upgrade pip ruff
+
+      - name: Run linters
+        run: pnpm lint
+
       - name: Run Node tests
         run: pnpm test
 

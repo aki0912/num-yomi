@@ -84,7 +84,6 @@ function parseArgs(argv) {
     }
     if (arg === "--variant-count") {
       parsed.variantCount = argv[++i];
-      continue;
     }
   }
   return parsed;

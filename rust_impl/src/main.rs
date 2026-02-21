@@ -1,5 +1,6 @@
 use num_yomi_rust::{
-    read, replace_in_text, FourVariantOpt, NineVariantOpt, ReadConfig, SevenVariantOpt, ZeroVariantOpt,
+    parse_four_variant_opt, parse_nine_variant_opt, parse_read_config, parse_seven_variant_opt,
+    parse_zero_variant_opt, read, replace_in_text, ReadConfig,
 };
 use serde_json::{json, Value};
 use std::fs;
@@ -84,7 +85,7 @@ fn parse_cli_config(args: &[String]) -> Result<Option<ReadConfig>, String> {
                 if i >= args.len() {
                     return Err("--zero expects rei or zero".to_string());
                 }
-                config.zero = Some(parse_zero_variant(&args[i])?);
+                config.zero = Some(parse_zero_variant_opt(&args[i])?);
                 touched = true;
             }
             "--four" => {
@@ -92,7 +93,7 @@ fn parse_cli_config(args: &[String]) -> Result<Option<ReadConfig>, String> {
                 if i >= args.len() {
                     return Err("--four expects yon or shi".to_string());
                 }
-                config.four = Some(parse_four_variant(&args[i])?);
+                config.four = Some(parse_four_variant_opt(&args[i])?);
                 touched = true;
             }
             "--seven" => {
@@ -100,7 +101,7 @@ fn parse_cli_config(args: &[String]) -> Result<Option<ReadConfig>, String> {
                 if i >= args.len() {
                     return Err("--seven expects nana or shichi".to_string());
                 }
-                config.seven = Some(parse_seven_variant(&args[i])?);
+                config.seven = Some(parse_seven_variant_opt(&args[i])?);
                 touched = true;
             }
             "--nine" => {
@@ -108,7 +109,7 @@ fn parse_cli_config(args: &[String]) -> Result<Option<ReadConfig>, String> {
                 if i >= args.len() {
                     return Err("--nine expects kyu or ku".to_string());
                 }
-                config.nine = Some(parse_nine_variant(&args[i])?);
+                config.nine = Some(parse_nine_variant_opt(&args[i])?);
                 touched = true;
             }
             "--mode" => {
@@ -120,7 +121,8 @@ fn parse_cli_config(args: &[String]) -> Result<Option<ReadConfig>, String> {
                 let Some(eq_pos) = value.find('=') else {
                     return Err("--mode expects counter=mode".to_string());
                 };
-                config = config.with_mode(value[..eq_pos].to_string(), value[eq_pos + 1..].to_string());
+                config =
+                    config.with_mode(value[..eq_pos].to_string(), value[eq_pos + 1..].to_string());
                 touched = true;
             }
             "--strict" => {
@@ -136,38 +138,6 @@ fn parse_cli_config(args: &[String]) -> Result<Option<ReadConfig>, String> {
         Ok(Some(config))
     } else {
         Ok(None)
-    }
-}
-
-fn parse_zero_variant(input: &str) -> Result<ZeroVariantOpt, String> {
-    match input {
-        "rei" => Ok(ZeroVariantOpt::Rei),
-        "zero" => Ok(ZeroVariantOpt::Zero),
-        _ => Err(format!("Invalid zero variant: {input}")),
-    }
-}
-
-fn parse_four_variant(input: &str) -> Result<FourVariantOpt, String> {
-    match input {
-        "yon" => Ok(FourVariantOpt::Yon),
-        "shi" => Ok(FourVariantOpt::Shi),
-        _ => Err(format!("Invalid four variant: {input}")),
-    }
-}
-
-fn parse_seven_variant(input: &str) -> Result<SevenVariantOpt, String> {
-    match input {
-        "nana" => Ok(SevenVariantOpt::Nana),
-        "shichi" => Ok(SevenVariantOpt::Shichi),
-        _ => Err(format!("Invalid seven variant: {input}")),
-    }
-}
-
-fn parse_nine_variant(input: &str) -> Result<NineVariantOpt, String> {
-    match input {
-        "kyu" => Ok(NineVariantOpt::Kyu),
-        "ku" => Ok(NineVariantOpt::Ku),
-        _ => Err(format!("Invalid nine variant: {input}")),
     }
 }
 
@@ -247,9 +217,10 @@ fn run_bench(args: &[String]) -> Result<(), String> {
 }
 
 fn load_cases(path: &PathBuf) -> Result<Vec<BenchCase>, String> {
-    let raw =
-        fs::read_to_string(path).map_err(|e| format!("Failed to read cases file {}: {e}", path.display()))?;
-    let value: Value = serde_json::from_str(&raw).map_err(|e| format!("Failed to parse cases JSON: {e}"))?;
+    let raw = fs::read_to_string(path)
+        .map_err(|e| format!("Failed to read cases file {}: {e}", path.display()))?;
+    let value: Value =
+        serde_json::from_str(&raw).map_err(|e| format!("Failed to parse cases JSON: {e}"))?;
 
     let arr = value
         .as_array()
@@ -273,7 +244,7 @@ fn load_cases(path: &PathBuf) -> Result<Vec<BenchCase>, String> {
             .ok_or_else(|| format!("Case {index} missing string field: out"))?
             .to_string();
 
-        let config = parse_case_config(obj.get("opts"))?;
+        let config = parse_read_config(obj.get("opts"))?;
 
         out.push(BenchCase {
             input,
@@ -283,67 +254,4 @@ fn load_cases(path: &PathBuf) -> Result<Vec<BenchCase>, String> {
     }
 
     Ok(out)
-}
-
-fn parse_case_config(opts_value: Option<&Value>) -> Result<Option<ReadConfig>, String> {
-    let Some(opts) = opts_value else {
-        return Ok(None);
-    };
-
-    let obj = opts
-        .as_object()
-        .ok_or_else(|| "opts must be an object".to_string())?;
-
-    let mut config = ReadConfig::default();
-    let mut touched = false;
-
-    if let Some(strict) = obj.get("strict").and_then(Value::as_bool) {
-        config.strict = strict;
-        touched = true;
-    }
-
-    if let Some(variant) = obj.get("variant") {
-        let vobj = variant
-            .as_object()
-            .ok_or_else(|| "opts.variant must be an object".to_string())?;
-
-        if let Some(zero) = vobj.get("zero").and_then(Value::as_str) {
-            config.zero = Some(parse_zero_variant(zero)?);
-            touched = true;
-        }
-
-        if let Some(four) = vobj.get("four").and_then(Value::as_str) {
-            config.four = Some(parse_four_variant(four)?);
-            touched = true;
-        }
-
-        if let Some(seven) = vobj.get("seven").and_then(Value::as_str) {
-            config.seven = Some(parse_seven_variant(seven)?);
-            touched = true;
-        }
-
-        if let Some(nine) = vobj.get("nine").and_then(Value::as_str) {
-            config.nine = Some(parse_nine_variant(nine)?);
-            touched = true;
-        }
-    }
-
-    if let Some(mode) = obj.get("mode") {
-        let mobj = mode
-            .as_object()
-            .ok_or_else(|| "opts.mode must be an object".to_string())?;
-        for (counter_id, mode_id_value) in mobj {
-            let mode_id = mode_id_value
-                .as_str()
-                .ok_or_else(|| "opts.mode values must be strings".to_string())?;
-            config = config.with_mode(counter_id.clone(), mode_id.to_string());
-            touched = true;
-        }
-    }
-
-    if touched {
-        Ok(Some(config))
-    } else {
-        Ok(None)
-    }
 }

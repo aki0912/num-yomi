@@ -21,6 +21,10 @@
     "generate:rules": "python3 scripts/generate_rules_artifacts.py",
     "prebuild": "pnpm generate:rules",
     "build": "tsc",
+    "lint": "pnpm lint:node && pnpm lint:python && pnpm lint:rust",
+    "lint:node": "biome lint --files-ignore-unknown=true src/index.ts src/core src/counters src/rules src/cli scripts/run-cases.js bench/*.mjs",
+    "lint:python": "python3 -m ruff check python_impl bench scripts",
+    "lint:rust": "cargo fmt --manifest-path rust_impl/Cargo.toml -- --check && cargo clippy --manifest-path rust_impl/Cargo.toml --all-targets",
     "num-yomi": "node dist/cli/num-yomi.js",
     "replace-num-yomi": "node dist/cli/replace-num-yomi.js",
     "start": "pnpm num-yomi",
@@ -47,6 +51,7 @@
     "node": ">=20"
   },
   "devDependencies": {
+    "@biomejs/biome": "^2.4.4",
     "@types/node": "^25.3.0",
     "typescript": "^5.6.3"
   }

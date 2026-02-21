@@ -40,6 +40,17 @@ pnpm test
 
 `pnpm build` の前に `scripts/generate_rules_artifacts.py` が走り、Node/Python向けの生成ルール（`src/generated/rules_bundle.ts`, `python_impl/generated_rules.py`）を更新します。
 
+## Lint
+
+Python の lint は `ruff` を使います（未インストールの場合は `python3 -m pip install ruff`）。
+
+```bash
+pnpm lint
+pnpm lint:node
+pnpm lint:python
+pnpm lint:rust
+```
+
 ## CLI で使う
 
 ```bash
