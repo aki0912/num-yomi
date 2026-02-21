@@ -1,4 +1,4 @@
-import type { ReadOptions, ReadResult, RuleBundle, YomiJa } from "./rules/types.js";
+import type { CounterCompose, PatternCompose, ReadOptions, ReadResult, RuleBundle, YomiJa } from "./rules/types.js";
 import { normalizeInput } from "./core/normalize.js";
 import { parseArabicDecimal, parseNumber } from "./core/parseNumber.js";
 import { readNumberTokens } from "./core/readNumberTokens.js";
@@ -15,6 +15,10 @@ const COUNTER_POSTFIXES = [
   { marker: "目", reading: ["め"] },
   { marker: "め", reading: ["め"] },
 ] as const;
+const KANJI_NUMERIC_CHARS = new Set(["零", "〇", "一", "二", "三", "四", "五", "六", "七", "八", "九", "十", "百", "千", "万", "億", "兆", "京"]);
+const REPLACE_TRIGGER_RE = /[0-9０-９$¥￥第]/;
+const CANDIDATE_START_RE = /[0-9０-９+\-＋－$¥￥第零〇一二三四五六七八九十百千万億兆京]/;
+const MAX_REPLACE_SPAN = 64;
 
 interface CounterPrefixMatch {
   marker: string;
@@ -78,6 +82,131 @@ function detectCounterWithParsableNumber(input: string, rules: RuleBundle) {
   return hasParsableNumberText(detected.numberPart) ? detected : null;
 }
 
+function resolveDecimalPatternSuffix(compose: PatternCompose, rules: RuleBundle): string[] | undefined {
+  const defaultForm = rules.patterns.patterns[compose.patternId]?.defaultForm;
+  if (defaultForm && compose.forms[defaultForm]) {
+    return compose.forms[defaultForm];
+  }
+  if (compose.forms.h) {
+    return compose.forms.h;
+  }
+  for (const suffixReading of Object.values(compose.forms)) {
+    return suffixReading;
+  }
+  return undefined;
+}
+
+function resolveDecimalComposeSuffix(compose: CounterCompose, rules: RuleBundle): string[] | undefined {
+  if (compose.type === "concat") {
+    return compose.suffixReading;
+  }
+  if (compose.type === "pattern") {
+    return resolveDecimalPatternSuffix(compose, rules);
+  }
+  return resolveDecimalComposeSuffix(compose.fallback, rules);
+}
+
+function normalizeIntegerTokensForDecimalPoint(tokens: string[]): string[] {
+  if (tokens.length === 0) {
+    return tokens;
+  }
+  const last = tokens[tokens.length - 1];
+  if (last !== "いち") {
+    return tokens;
+  }
+  return [...tokens.slice(0, -1), "いっ"];
+}
+
+function collectReplaceMarkers(rules: RuleBundle): string[] {
+  const markers = new Set<string>();
+  for (const counter of Object.values(rules.counters.counters)) {
+    for (const marker of counter.surface?.prefix ?? []) {
+      markers.add(marker);
+    }
+    for (const marker of counter.surface?.suffix ?? []) {
+      markers.add(marker);
+    }
+  }
+  for (const prefix of COUNTER_PREFIXES) {
+    markers.add(prefix.marker);
+  }
+  for (const postfix of COUNTER_POSTFIXES) {
+    markers.add(postfix.marker);
+  }
+  return [...markers].sort((a, b) => b.length - a.length);
+}
+
+function containsNumericChar(text: string): boolean {
+  for (const ch of text) {
+    if (KANJI_NUMERIC_CHARS.has(ch)) {
+      return true;
+    }
+    if ((ch >= "0" && ch <= "9") || (ch >= "０" && ch <= "９")) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function containsMarker(text: string, markers: string[]): boolean {
+  for (const marker of markers) {
+    if (text.includes(marker)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function replaceInTextWithRules(input: string, rules: RuleBundle, options?: ReadOptions): string {
+  if (input.length === 0) {
+    return input;
+  }
+  const markers = collectReplaceMarkers(rules);
+  let out = "";
+  let index = 0;
+  while (index < input.length) {
+    const ch = input[index];
+    if (!CANDIDATE_START_RE.test(ch)) {
+      out += ch;
+      index += 1;
+      continue;
+    }
+
+    const maxEnd = Math.min(input.length, index + MAX_REPLACE_SPAN);
+    let matchedReading: string | undefined;
+    let matchedEnd = index;
+    for (let end = maxEnd; end > index; end -= 1) {
+      const fragment = input.slice(index, end);
+      if (!REPLACE_TRIGGER_RE.test(fragment)) {
+        continue;
+      }
+      if (!containsNumericChar(fragment)) {
+        continue;
+      }
+      if (!containsMarker(fragment, markers)) {
+        continue;
+      }
+      const reading = toReading(fragment, rules, options);
+      if (!reading) {
+        continue;
+      }
+      matchedReading = reading.reading;
+      matchedEnd = end;
+      break;
+    }
+
+    if (matchedReading !== undefined) {
+      out += matchedReading;
+      index = matchedEnd;
+      continue;
+    }
+
+    out += ch;
+    index += 1;
+  }
+  return out;
+}
+
 function resolveCounterCompose(rules: RuleBundle, counterId: string, options?: ReadOptions) {
   const counter = rules.counters.counters[counterId];
   if (!counter) {
@@ -109,7 +238,7 @@ function readDecimalTokens(
   rules: RuleBundle,
   options?: ReadOptions
 ) {
-  const integerTokens = readNumberTokens(integerPart, rules.core, options?.variant);
+  const integerTokens = normalizeIntegerTokensForDecimalPoint(readNumberTokens(integerPart, rules.core, options?.variant));
   const prefix = sign < 0 ? [...rules.core.minus, ...integerTokens] : integerTokens;
   return [...prefix, DECIMAL_POINT_TOKEN, ...fractionDigits.map((d) => readFractionDigitToken(d, rules, options))];
 }
@@ -167,17 +296,16 @@ function toReading(input: string, rules: RuleBundle, options?: ReadOptions) {
       } satisfies ReadResult;
     }
 
-    if (resolved.compose.type !== "concat") {
+    const decimalSuffixReading = resolveDecimalComposeSuffix(resolved.compose, rules);
+    if (!decimalSuffixReading) {
       if (options?.strict) {
-        throw new Error(
-          `Decimal values with counter '${detected.counterId}' are only supported for concat compose`
-        );
+        throw new Error(`Decimal values with counter '${detected.counterId}' are not supported`);
       }
       return null;
     }
 
     const tokens = prependCounterPrefix(
-      appendCounterPostfix([...baseTokens, ...resolved.compose.suffixReading], postfix),
+      appendCounterPostfix([...baseTokens, ...decimalSuffixReading], postfix),
       prefix
     );
     return {
@@ -238,6 +366,9 @@ function createYomiJaWithRules(rules: RuleBundle): YomiJa {
     readNumber(value, options) {
       return joinTokens(readNumberTokens(value, rules.core, options?.variant));
     },
+    replaceInText(input, options) {
+      return replaceInTextWithRules(input, rules, options);
+    },
   };
 }
 
@@ -258,6 +389,10 @@ export function readDetailed(input: string, options?: ReadOptions): ReadResult |
 
 export function readNumber(value: bigint, options?: ReadOptions): string {
   return yomiJa.readNumber(value, options);
+}
+
+export function replaceInText(input: string, options?: ReadOptions): string {
+  return yomiJa.replaceInText(input, options);
 }
 
 export default yomiJa;

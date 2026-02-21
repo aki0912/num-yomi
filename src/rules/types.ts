@@ -29,6 +29,7 @@ export interface YomiJa {
   read(input: string, options?: ReadOptions): string | null;
   readDetailed(input: string, options?: ReadOptions): ReadResult | null;
   readNumber(n: bigint, options?: ReadOptions): string;
+  replaceInText(input: string, options?: ReadOptions): string;
 }
 
 export interface CoreRules {

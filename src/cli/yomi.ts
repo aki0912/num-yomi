@@ -5,10 +5,12 @@ function parseArgs(argv: string[]) {
   const options: {
     zero?: "rei" | "zero";
     strict: boolean;
+    replace: boolean;
     mode: Record<string, string>;
     input?: string;
   } = {
     strict: false,
+    replace: false,
     mode: {},
   };
 
@@ -46,6 +48,10 @@ function parseArgs(argv: string[]) {
       options.strict = true;
       continue;
     }
+    if (arg === "--replace") {
+      options.replace = true;
+      continue;
+    }
     if (arg === "--help" || arg === "-h") {
       printHelp();
       process.exit(0);
@@ -59,11 +65,12 @@ function parseArgs(argv: string[]) {
 
 function printHelp() {
   console.log([
-    "Usage: yomi \"¥300\" [--zero rei|zero] [--mode counter=mode] [--strict]",
+    "Usage: yomi \"¥300\" [--zero rei|zero] [--mode counter=mode] [--strict] [--replace]",
     "",
     "Examples:",
     "  yomi \"¥300\"",
     "  yomi \"1日\" --mode day=date",
+    "  yomi \"今日は第3版を1.2本買った\" --replace",
     "  yomi \"300円\" --strict",
   ].join("\n"));
 }
@@ -74,11 +81,18 @@ if (options.input === undefined) {
   process.exit(1);
 }
 
-const result = yomi.read(options.input, {
+const readOptions = {
   strict: options.strict,
   variant: options.zero ? { zero: options.zero } : undefined,
   mode: options.mode,
-});
+};
+
+if (options.replace) {
+  console.log(yomi.replaceInText(options.input, readOptions));
+  process.exit(0);
+}
+
+const result = yomi.read(options.input, readOptions);
 
 if (result === null) {
   console.error("Unable to parse");

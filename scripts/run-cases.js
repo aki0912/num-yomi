@@ -6,10 +6,13 @@ import { fileURLToPath } from "node:url";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(__dirname, "..");
 const casesPath = path.join(repoRoot, "test", "cases.json");
+const replaceCasesPath = path.join(repoRoot, "test", "replace_cases.json");
 const distIndex = path.join(repoRoot, "dist", "index.js");
 
 const raw = fs.readFileSync(casesPath, "utf8");
 const cases = JSON.parse(raw);
+const replaceRaw = fs.readFileSync(replaceCasesPath, "utf8");
+const replaceCases = JSON.parse(replaceRaw);
 
 const yomi = (await import(pathToFileURL(distIndex))).default;
 
@@ -19,9 +22,19 @@ for (const item of cases) {
   if (actual !== item.out) {
     fail += 1;
     console.error(`FAIL in=${item.in}\n  expected=${item.out}\n  actual=${actual}`);
-  continue;
+    continue;
   }
   console.log(`OK ${item.in} => ${actual}`);
+}
+
+for (const item of replaceCases) {
+  const actual = yomi.replaceInText(item.in, item.opts);
+  if (actual !== item.out) {
+    fail += 1;
+    console.error(`FAIL replace in=${item.in}\n  expected=${item.out}\n  actual=${actual}`);
+    continue;
+  }
+  console.log(`OK replace ${item.in} => ${actual}`);
 }
 
 if (fail > 0) {
@@ -29,7 +42,7 @@ if (fail > 0) {
   process.exit(1);
 }
 
-console.log(`\n${cases.length} cases passed.`);
+console.log(`\n${cases.length + replaceCases.length} cases passed.`);
 
 function pathToFileURL(filePath) {
   const absolute = path.resolve(filePath);

@@ -2,7 +2,7 @@ use num_bigint::BigInt;
 use num_traits::{Signed, ToPrimitive, Zero};
 use serde_json::{json, Value};
 use smallvec::{smallvec, SmallVec};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -14,6 +14,7 @@ type Token = &'static str;
 type Tokens = &'static [Token];
 type TokenBuf = SmallVec<[Token; 16]>;
 const DECIMAL_POINT_TOKEN: Token = "てん";
+const MAX_REPLACE_SPAN: usize = 64;
 
 #[derive(Clone, Copy)]
 struct CounterPrefixDef {
@@ -280,6 +281,7 @@ struct RuntimeRules {
 }
 
 static RUNTIME_RULES: OnceLock<RuntimeRules> = OnceLock::new();
+static REPLACE_MARKERS: OnceLock<Vec<&'static str>> = OnceLock::new();
 
 fn runtime_rules() -> &'static RuntimeRules {
     RUNTIME_RULES.get_or_init(|| {
@@ -328,6 +330,38 @@ fn runtime_rules() -> &'static RuntimeRules {
     })
 }
 
+fn replace_markers() -> &'static Vec<&'static str> {
+    REPLACE_MARKERS.get_or_init(|| {
+        let mut seen: HashSet<&'static str> = HashSet::new();
+        let mut markers: Vec<&'static str> = Vec::new();
+
+        for counter in COUNTER_DEFS {
+            for marker in counter.prefix {
+                if seen.insert(*marker) {
+                    markers.push(*marker);
+                }
+            }
+            for marker in counter.suffix {
+                if seen.insert(*marker) {
+                    markers.push(*marker);
+                }
+            }
+        }
+        for prefix in COUNTER_PREFIXES {
+            if seen.insert(prefix.marker) {
+                markers.push(prefix.marker);
+            }
+        }
+        for postfix in COUNTER_POSTFIXES {
+            if seen.insert(postfix.marker) {
+                markers.push(postfix.marker);
+            }
+        }
+        markers.sort_by(|a, b| b.len().cmp(&a.len()));
+        markers
+    })
+}
+
 #[derive(Clone, Copy)]
 struct CounterMatch<'a> {
     counter: &'static CounterDef,
@@ -361,6 +395,7 @@ fn main() {
 
     let result = match args[1].as_str() {
         "read" => run_read(&args[2..]),
+        "replace" => run_replace(&args[2..]),
         "bench" => run_bench(&args[2..]),
         _ => {
             print_usage();
@@ -376,7 +411,7 @@ fn main() {
 
 fn print_usage() {
     eprintln!(
-        "Usage:\n  yomi_rust read <input> [--zero rei|zero] [--mode counter=mode] [--strict]\n  yomi_rust bench [--cases path] [--iterations N]"
+        "Usage:\n  yomi_rust read <input> [--zero rei|zero] [--mode counter=mode] [--strict]\n  yomi_rust replace <input> [--zero rei|zero] [--mode counter=mode] [--strict]\n  yomi_rust bench [--cases path] [--iterations N]"
     );
 }
 
@@ -431,6 +466,54 @@ fn run_read(args: &[String]) -> Result<(), String> {
         }
         None => Err("Unable to parse".to_string()),
     }
+}
+
+fn run_replace(args: &[String]) -> Result<(), String> {
+    if args.is_empty() {
+        return Err("replace requires an input".to_string());
+    }
+
+    let input = args[0].clone();
+    let mut options = ReadOptions::default();
+
+    let mut i = 1;
+    while i < args.len() {
+        match args[i].as_str() {
+            "--zero" => {
+                i += 1;
+                if i >= args.len() {
+                    return Err("--zero expects rei or zero".to_string());
+                }
+                options.zero = Some(parse_zero_variant(&args[i])?);
+            }
+            "--mode" => {
+                i += 1;
+                if i >= args.len() {
+                    return Err("--mode expects counter=mode".to_string());
+                }
+                let value = &args[i];
+                let Some(eq_pos) = value.find('=') else {
+                    return Err("--mode expects counter=mode".to_string());
+                };
+                options.modes.push(ModeOverride {
+                    counter_id: value[..eq_pos].to_string(),
+                    mode_id: value[eq_pos + 1..].to_string(),
+                });
+            }
+            "--strict" => {
+                options.strict = true;
+            }
+            other => {
+                return Err(format!("Unknown flag: {other}"));
+            }
+        }
+        i += 1;
+    }
+
+    let rules = runtime_rules();
+    let replaced = replace_in_text_with_options(&input, &options, rules);
+    println!("{replaced}");
+    Ok(())
 }
 
 #[derive(Debug)]
@@ -673,7 +756,7 @@ fn read_with_options(
     if let Some(decimal) = parse_decimal(number_text) {
         let base_tokens = read_decimal_tokens(&decimal, rules.core, options)?;
         let final_tokens = if let Some(matched) = detected {
-            match apply_counter_decimal(matched.counter, &base_tokens, options) {
+            match apply_counter_decimal(matched.counter, &base_tokens, options, rules) {
                 Ok(tokens) => tokens,
                 Err(message) => {
                     if options.strict {
@@ -707,6 +790,64 @@ fn read_with_options(
 
     let final_tokens = prepend_counter_prefix(append_counter_postfix(final_tokens, postfix), prefix);
     Ok(Some(join_tokens(&final_tokens)))
+}
+
+fn replace_in_text_with_options(input: &str, options: &ReadOptions, rules: &RuntimeRules) -> String {
+    if input.is_empty() {
+        return String::new();
+    }
+
+    let positions: Vec<(usize, char)> = input.char_indices().collect();
+    let char_len = positions.len();
+    let markers = replace_markers();
+    let mut out = String::with_capacity(input.len());
+    let mut index = 0usize;
+
+    while index < char_len {
+        let ch = positions[index].1;
+        if !is_candidate_start(ch) {
+            out.push(ch);
+            index += 1;
+            continue;
+        }
+
+        let max_end = std::cmp::min(char_len, index + MAX_REPLACE_SPAN);
+        let mut matched: Option<(usize, String)> = None;
+        for end in (index + 1..=max_end).rev() {
+            let start_byte = positions[index].0;
+            let end_byte = if end < char_len {
+                positions[end].0
+            } else {
+                input.len()
+            };
+            let fragment = &input[start_byte..end_byte];
+            if !has_replace_trigger(fragment) {
+                continue;
+            }
+            if !contains_numeric_char(fragment) {
+                continue;
+            }
+            if !contains_marker(fragment, markers) {
+                continue;
+            }
+
+            if let Ok(Some(reading)) = read_with_options(fragment, options, rules) {
+                matched = Some((end, reading));
+                break;
+            }
+        }
+
+        if let Some((end, reading)) = matched {
+            out.push_str(&reading);
+            index = end;
+            continue;
+        }
+
+        out.push(ch);
+        index += 1;
+    }
+
+    out
 }
 
 fn normalize_input(input: &str) -> String {
@@ -756,6 +897,83 @@ fn detect_counter<'a>(input: &'a str, rules: &RuntimeRules) -> Option<CounterMat
     }
 
     None
+}
+
+fn has_replace_trigger(input: &str) -> bool {
+    input.chars().any(|ch| {
+        ch == '$'
+            || ch == '¥'
+            || ch == '￥'
+            || ch == '第'
+            || ch.is_ascii_digit()
+            || ('０'..='９').contains(&ch)
+    })
+}
+
+fn contains_numeric_char(input: &str) -> bool {
+    input.chars().any(|ch| {
+        ch.is_ascii_digit()
+            || ('０'..='９').contains(&ch)
+            || matches!(
+                ch,
+                '零'
+                    | '〇'
+                    | '一'
+                    | '二'
+                    | '三'
+                    | '四'
+                    | '五'
+                    | '六'
+                    | '七'
+                    | '八'
+                    | '九'
+                    | '十'
+                    | '百'
+                    | '千'
+                    | '万'
+                    | '億'
+                    | '兆'
+                    | '京'
+            )
+    })
+}
+
+fn contains_marker(input: &str, markers: &[&str]) -> bool {
+    markers.iter().any(|marker| input.contains(marker))
+}
+
+fn is_candidate_start(ch: char) -> bool {
+    ch.is_ascii_digit()
+        || ('０'..='９').contains(&ch)
+        || matches!(
+            ch,
+            '+'
+                | '-'
+                | '＋'
+                | '－'
+                | '$'
+                | '¥'
+                | '￥'
+                | '第'
+                | '零'
+                | '〇'
+                | '一'
+                | '二'
+                | '三'
+                | '四'
+                | '五'
+                | '六'
+                | '七'
+                | '八'
+                | '九'
+                | '十'
+                | '百'
+                | '千'
+                | '万'
+                | '億'
+                | '兆'
+                | '京'
+        )
 }
 
 fn has_parsable_number_text(input: &str) -> bool {
@@ -1230,6 +1448,7 @@ fn read_decimal_tokens(
     options: &ReadOptions,
 ) -> Result<TokenBuf, String> {
     let mut integer_tokens = read_number_tokens(&decimal.integer_part, core, options)?;
+    normalize_integer_tokens_for_decimal_point(&mut integer_tokens);
 
     if decimal.negative {
         let mut prefixed = TokenBuf::with_capacity(core.minus.len() + integer_tokens.len());
@@ -1247,6 +1466,14 @@ fn read_decimal_tokens(
     }
 
     Ok(out)
+}
+
+fn normalize_integer_tokens_for_decimal_point(tokens: &mut TokenBuf) {
+    if let Some(last) = tokens.last_mut() {
+        if *last == "いち" {
+            *last = "いっ";
+        }
+    }
 }
 
 fn read_fraction_digit_token(
@@ -1467,24 +1694,21 @@ fn apply_counter_decimal(
     counter: &CounterDef,
     base_tokens: &TokenBuf,
     options: &ReadOptions,
+    rules: &RuntimeRules,
 ) -> Result<TokenBuf, String> {
     let compose = resolve_counter_compose(counter, options);
     let Some(compose) = compose else {
         return Ok(base_tokens.clone());
     };
 
-    match compose {
-        Compose::Concat(suffix) => {
-            let mut out = TokenBuf::with_capacity(base_tokens.len() + suffix.len());
-            out.extend_from_slice(base_tokens);
-            out.extend_from_slice(suffix);
-            Ok(out)
-        }
-        _ => Err(format!(
-            "Decimal values with counter '{}' are only supported for concat compose",
-            counter.id
-        )),
-    }
+    let Some(suffix) = resolve_decimal_compose_suffix(compose, rules) else {
+        return Err(format!("Decimal values with counter '{}' are not supported", counter.id));
+    };
+
+    let mut out = TokenBuf::with_capacity(base_tokens.len() + suffix.len());
+    out.extend_from_slice(base_tokens);
+    out.extend_from_slice(suffix);
+    Ok(out)
 }
 
 fn apply_compose(
@@ -1550,6 +1774,40 @@ fn apply_pattern_compose(
         rewritten
     } else {
         base_tokens.clone()
+    }
+}
+
+fn resolve_decimal_pattern_suffix(
+    pattern_compose: PatternCompose,
+    rules: &RuntimeRules,
+) -> Option<Tokens> {
+    if let Some(pattern) = rules.patterns_by_id.get(pattern_compose.pattern_id) {
+        if let Some(form) = pattern_compose
+            .forms
+            .iter()
+            .find(|f| f.key == pattern.default_form)
+        {
+            return Some(form.tokens);
+        }
+    }
+
+    if let Some(form) = pattern_compose.forms.iter().find(|f| f.key == "h") {
+        return Some(form.tokens);
+    }
+
+    pattern_compose.forms.first().map(|form| form.tokens)
+}
+
+fn resolve_decimal_compose_suffix(compose: Compose, rules: &RuntimeRules) -> Option<Tokens> {
+    match compose {
+        Compose::Concat(suffix) => Some(suffix),
+        Compose::Pattern(pattern_compose) => resolve_decimal_pattern_suffix(pattern_compose, rules),
+        Compose::ExceptionsFirst(ex_compose) => match ex_compose.fallback {
+            FallbackCompose::Concat(suffix) => Some(suffix),
+            FallbackCompose::Pattern(pattern_compose) => {
+                resolve_decimal_pattern_suffix(pattern_compose, rules)
+            }
+        },
     }
 }
 

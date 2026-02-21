@@ -3,10 +3,11 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import time
 import unicodedata
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Set, Tuple
 
 ROOT_DIR = Path(__file__).resolve().parents[1]
 RULE_DIR = ROOT_DIR / "rules" / "ja"
@@ -43,6 +44,10 @@ BIG_UNITS: Dict[str, int] = {
 DECIMAL_POINT_TOKEN = "てん"
 COUNTER_PREFIXES: List[Tuple[str, List[str]]] = [("第", ["だい"])]
 COUNTER_POSTFIXES: List[Tuple[str, List[str]]] = [("目", ["め"]), ("め", ["め"])]
+KANJI_INT_CHARS_REPLACE = set("零〇一二三四五六七八九十百千万億兆京")
+REPLACE_TRIGGER_RE = re.compile(r"[0-9０-９$¥￥第]")
+CANDIDATE_START_RE = re.compile(r"[0-9０-９+\-＋－$¥￥第零〇一二三四五六七八九十百千万億兆京]")
+MAX_REPLACE_SPAN = 64
 
 __all__ = [
     "YomiJaPy",
@@ -52,6 +57,7 @@ __all__ = [
     "read",
     "read_detailed",
     "read_number",
+    "replace_in_text",
     "run_benchmark",
 ]
 
@@ -168,6 +174,40 @@ def detect_counter_with_parsable_number(
     if not has_parsable_number_text(detected["numberPart"]):
         return None
     return detected
+
+
+def collect_replace_markers(counter_defs: Dict[str, Any]) -> List[str]:
+    markers: Set[str] = set()
+    for counter in counter_defs.values():
+        if not isinstance(counter, dict):
+            continue
+        surface = counter.get("surface", {})
+        if not isinstance(surface, dict):
+            continue
+        for marker in surface.get("prefix", []):
+            if isinstance(marker, str):
+                markers.add(marker)
+        for marker in surface.get("suffix", []):
+            if isinstance(marker, str):
+                markers.add(marker)
+    for marker, _ in COUNTER_PREFIXES:
+        markers.add(marker)
+    for marker, _ in COUNTER_POSTFIXES:
+        markers.add(marker)
+    return sorted(markers, key=len, reverse=True)
+
+
+def contains_numeric_char(input_text: str) -> bool:
+    for ch in input_text:
+        if ch in KANJI_INT_CHARS_REPLACE:
+            return True
+        if ("0" <= ch <= "9") or ("０" <= ch <= "９"):
+            return True
+    return False
+
+
+def contains_marker(input_text: str, markers: List[str]) -> bool:
+    return any(marker in input_text for marker in markers)
 
 
 def parse_kansuji(input_text: str) -> Optional[int]:
@@ -408,6 +448,14 @@ def read_fraction_digit_token(digit: int, core: Dict[str, Any], options: Optiona
     return read_digit_tokens(digit, core, options)[0]
 
 
+def normalize_integer_tokens_for_decimal_point(tokens: List[str]) -> List[str]:
+    if not tokens:
+        return tokens
+    if tokens[-1] != "いち":
+        return tokens
+    return list(tokens[:-1]) + ["いっ"]
+
+
 def read_decimal_tokens(
     sign: int,
     integer_part: int,
@@ -416,7 +464,9 @@ def read_decimal_tokens(
     options: Optional[Dict[str, Any]],
     unit_by_pow10: Dict[int, List[str]],
 ) -> List[str]:
-    integer_tokens = read_number_tokens(integer_part, core, options, unit_by_pow10)
+    integer_tokens = normalize_integer_tokens_for_decimal_point(
+        read_number_tokens(integer_part, core, options, unit_by_pow10)
+    )
     prefix = (list(core["minus"]) + integer_tokens) if sign < 0 else integer_tokens
     out = list(prefix)
     out.append(DECIMAL_POINT_TOKEN)
@@ -495,6 +545,44 @@ def apply_counter(
     return apply_compose(compose, number_value, number_tokens, pattern_defs), mode_name
 
 
+def resolve_decimal_pattern_suffix(compose: Dict[str, Any], pattern_defs: Dict[str, Any]) -> Optional[List[str]]:
+    pattern_id = compose.get("patternId")
+    pattern = pattern_defs.get(pattern_id)
+    forms = compose.get("forms", {})
+    if not isinstance(forms, dict):
+        return None
+
+    if isinstance(pattern, dict):
+        default_form = pattern.get("defaultForm")
+        if isinstance(default_form, str):
+            suffix = forms.get(default_form)
+            if isinstance(suffix, list):
+                return list(suffix)
+
+    default_h = forms.get("h")
+    if isinstance(default_h, list):
+        return list(default_h)
+
+    for suffix in forms.values():
+        if isinstance(suffix, list):
+            return list(suffix)
+    return None
+
+
+def resolve_decimal_compose_suffix(compose: Dict[str, Any], pattern_defs: Dict[str, Any]) -> Optional[List[str]]:
+    compose_type = compose.get("type")
+    if compose_type == "concat":
+        suffix = compose.get("suffixReading", [])
+        return list(suffix) if isinstance(suffix, list) else None
+    if compose_type == "pattern":
+        return resolve_decimal_pattern_suffix(compose, pattern_defs)
+    if compose_type == "exceptions_first":
+        fallback = compose.get("fallback")
+        if isinstance(fallback, dict):
+            return resolve_decimal_compose_suffix(fallback, pattern_defs)
+    return None
+
+
 def resolve_counter_compose(
     counter_defs: Dict[str, Any],
     counter_id: str,
@@ -538,6 +626,7 @@ class YomiJaPy:
         self.counter_defs = self.rules["counters"]["counters"]
         self.prefixes_by_head, self.suffixes_by_tail = build_counter_index(self.counter_defs)
         self.unit_by_pow10 = {int(entry["pow10"]): entry["reading"] for entry in self.core["bigUnits"]}
+        self.replace_markers = collect_replace_markers(self.counter_defs)
 
     def read(self, input_text: str, options: Optional[Dict[str, Any]] = None) -> Optional[str]:
         result = self.read_detailed(input_text, options)
@@ -546,6 +635,50 @@ class YomiJaPy:
     def read_number(self, value: int, options: Optional[Dict[str, Any]] = None) -> str:
         tokens = read_number_tokens(value, self.core, options, self.unit_by_pow10)
         return "".join(tokens)
+
+    def replace_in_text(self, input_text: str, options: Optional[Dict[str, Any]] = None) -> str:
+        if input_text == "":
+            return input_text
+
+        out: List[str] = []
+        index = 0
+        input_len = len(input_text)
+
+        while index < input_len:
+            ch = input_text[index]
+            if CANDIDATE_START_RE.fullmatch(ch) is None:
+                out.append(ch)
+                index += 1
+                continue
+
+            max_end = min(input_len, index + MAX_REPLACE_SPAN)
+            matched_reading: Optional[str] = None
+            matched_end = index
+
+            for end in range(max_end, index, -1):
+                fragment = input_text[index:end]
+                if REPLACE_TRIGGER_RE.search(fragment) is None:
+                    continue
+                if not contains_numeric_char(fragment):
+                    continue
+                if not contains_marker(fragment, self.replace_markers):
+                    continue
+                reading = self.read(fragment, options)
+                if reading is None:
+                    continue
+                matched_reading = reading
+                matched_end = end
+                break
+
+            if matched_reading is not None:
+                out.append(matched_reading)
+                index = matched_end
+                continue
+
+            out.append(ch)
+            index += 1
+
+        return "".join(out)
 
     def read_detailed(self, input_text: str, options: Optional[Dict[str, Any]] = None) -> Optional[Dict[str, Any]]:
         normalized = normalize_input(input_text)
@@ -585,13 +718,12 @@ class YomiJaPy:
                 compose, mode_used = resolve_counter_compose(self.counter_defs, detected["counterId"], options)
                 counter_id = detected["counterId"]
                 if isinstance(compose, dict):
-                    if compose.get("type") != "concat":
+                    decimal_suffix = resolve_decimal_compose_suffix(compose, self.pattern_defs)
+                    if decimal_suffix is None:
                         if strict:
-                            raise ValueError(
-                                f"Decimal values with counter '{counter_id}' are only supported for concat compose"
-                            )
+                            raise ValueError(f"Decimal values with counter '{counter_id}' are not supported")
                         return None
-                    tokens = list(base_tokens) + list(compose.get("suffixReading", []))
+                    tokens = list(base_tokens) + list(decimal_suffix)
                 else:
                     tokens = base_tokens
             else:
@@ -681,6 +813,10 @@ def read_number(value: int, options: Optional[Dict[str, Any]] = None) -> str:
     return get_default_yomi().read_number(value, options)
 
 
+def replace_in_text(input_text: str, options: Optional[Dict[str, Any]] = None) -> str:
+    return get_default_yomi().replace_in_text(input_text, options)
+
+
 def run_benchmark(cases_path: Path, iterations: int) -> Dict[str, Any]:
     yomi = YomiJaPy()
     with cases_path.open("r", encoding="utf-8") as f:
@@ -745,6 +881,12 @@ def main() -> None:
     read_parser.add_argument("--mode", action="append", default=[])
     read_parser.add_argument("--strict", action="store_true")
 
+    replace_parser = subparsers.add_parser("replace", help="Replace numeric expressions in a text")
+    replace_parser.add_argument("input", help="Input text")
+    replace_parser.add_argument("--zero", choices=["rei", "zero"], default=None)
+    replace_parser.add_argument("--mode", action="append", default=[])
+    replace_parser.add_argument("--strict", action="store_true")
+
     bench_parser = subparsers.add_parser("bench", help="Run benchmark with cases")
     bench_parser.add_argument("--cases", default=str(ROOT_DIR / "test" / "cases.json"))
     bench_parser.add_argument("--iterations", type=int, default=20_000)
@@ -766,6 +908,19 @@ def main() -> None:
         if result is None:
             raise SystemExit("Unable to parse")
         print(result)
+        return
+
+    if args.command == "replace":
+        options: Dict[str, Any] = {}
+        if args.zero is not None:
+            options["variant"] = {"zero": args.zero}
+        modes = parse_modes(args.mode)
+        if modes:
+            options["mode"] = modes
+        if args.strict:
+            options["strict"] = True
+
+        print(yomi.replace_in_text(args.input, options or None))
         return
 
     if args.command == "bench":

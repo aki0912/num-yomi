@@ -44,6 +44,7 @@ node dist/cli/yomi.js "300円"
 - `--zero rei|zero`
 - `--mode <counterId>=<modeId>`（複数指定可）
 - `--strict`（失敗時に非0終了）
+- `--replace`（文中の数値表現を自動置換）
 
 例:
 
@@ -51,12 +52,13 @@ node dist/cli/yomi.js "300円"
 node dist/cli/yomi.js "1日" --mode day=duration
 node dist/cli/yomi.js "0" --zero zero
 node dist/cli/yomi.js "$100"
+node dist/cli/yomi.js "今日は第3版を1.2本買った" --replace
 ```
 
 ## ライブラリ API
 
 ```ts
-import yomiJa, { read, createYomiJa } from "./dist/index.js";
+import yomiJa, { read, replaceInText, createYomiJa } from "./dist/index.js";
 
 const a = yomiJa.read("¥300");
 // => さんびゃくえん
@@ -79,6 +81,9 @@ const e = yomiJa.readNumber(5000n);
 const custom = createYomiJa("./rules/ja");
 const f = custom.read("$100");
 // => ひゃくどる
+
+const g = replaceInText("今日は第3版を1.2本買った");
+// => 今日はだいさんはんをいってんにほん買った
 ```
 
 ### API 仕様
@@ -87,6 +92,7 @@ const f = custom.read("$100");
 - `read(input, options?)` -> `string | null`
 - `readDetailed(input, options?)` -> 詳細オブジェクト or `null`
 - `readNumber(bigint, options?)` -> `string`
+- `replaceInText(input, options?)` -> `string`
 
 `options`:
 
@@ -104,6 +110,7 @@ const f = custom.read("$100");
 - 算用数字: `5000`, `-12`, `5,000`
 - 算用数字 + 大数単位: `5000億`, `5000億円`
 - 小数（算用数字）: `3.14` -> `さんてんいちよん`
+- 小数 + 助数詞: `1.2本` -> `いってんにほん`, `1.2回` -> `いってんにかい`
 - 漢数字: `五千`, `三百`, `二〇二〇`
 - 助数詞付き（prefix/suffix 1個）
   - prefix 例: `¥300`, `$100`
@@ -112,12 +119,12 @@ const f = custom.read("$100");
   - `第` を前置可能（例: `第3版`, `第1回`, `第1戦目`）
 - 接尾助数詞接尾（汎用）
   - `目` / `め` を後置可能（例: `1回目`, `1週目`, `一戦目`）
+- 文中自動置換（`replaceInText` / `--replace`）
+  - 例: `今日は第3版を1.2本買った` -> `今日はだいさんはんをいってんにほん買った`
 
 ### 非対応（現状）
 
-- 文章全体の自動置換（単独入力のみ対象）
 - 指数表記（`1e9`）
-- 小数 + 非`concat`助数詞（例: `1.2本`）は未対応
 - 1入力内の複数助数詞（`¥300円` など）
 
 ## 対応助数詞
@@ -269,7 +276,7 @@ const f = custom.read("$100");
 
 ## テスト
 
-ゴールデンケースは `test/cases.json` にあります。
+ゴールデンケースは `test/cases.json`（単独読み）と `test/replace_cases.json`（文中置換）にあります。
 
 ```bash
 pnpm test
@@ -296,6 +303,9 @@ print(read("300円"))
 yomi = YomiJaPy()
 print(yomi.read("1日", {"mode": {"day": "duration"}}))
 # いちにち
+
+print(yomi.replace_in_text("今日は第3版を1.2本買った"))
+# 今日はだいさんはんをいってんにほん買った
 ```
 
 Rust から呼ぶ例:
@@ -307,7 +317,7 @@ yomi_rust = { path = "../japanese_number_reading/rust_impl" }
 ```
 
 ```rust
-use yomi_rust::{read, read_number_i64, ReadConfig};
+use yomi_rust::{read, read_number_i64, replace_in_text, ReadConfig};
 
 fn main() {
     let out = read("300円", None).unwrap().unwrap();
@@ -319,6 +329,9 @@ fn main() {
 
     let n = read_number_i64(5000, None).unwrap();
     println!("{n}");
+
+    let replaced = replace_in_text("今日は第3版を1.2本買った", None).unwrap();
+    println!("{replaced}");
 }
 ```
 
@@ -326,6 +339,7 @@ fn main() {
 
 ```bash
 python3 python_impl/yomi.py read \"300円\"
+cargo run --manifest-path rust_impl/Cargo.toml -- replace \"今日は第3版を1.2本買った\"
 cargo run --manifest-path rust_impl/Cargo.toml -- read \"300円\"
 ```
 
