@@ -18,6 +18,10 @@
 - 助数詞は `concat` / `exceptions_first` / `pattern` で合成
 - 解析詳細を返す `readDetailed()` を提供
 
+## 設計ドキュメント
+
+- ルールファイル設計: `docs/rule_files_design.md`
+
 ## 要件
 
 - Node.js `>= 20`
