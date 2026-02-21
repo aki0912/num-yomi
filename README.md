@@ -121,6 +121,8 @@ const g = replaceInText("今日は第3版を1.2本買った");
   - `目` / `め` を後置可能（例: `1回目`, `1週目`, `一戦目`）
 - 文中自動置換（`replaceInText` / `--replace`）
   - 例: `今日は第3版を1.2本買った` -> `今日はだいさんはんをいってんにほん買った`
+- 数字対数字の形式（助数詞としての `対` ではなく専用パターン）
+  - 例: `1対1` -> `いったいいち`
 
 ### 非対応（現状）
 
@@ -175,12 +177,28 @@ const g = replaceInText("今日は第3版を1.2本買った");
 | `go_word` | suffix | `語` | 数読み + `ご` |
 | `mon_question` | suffix | `問` | 数読み + `もん` |
 | `gyou_line` | suffix | `行` | 数読み + `ぎょう` |
+| `retsu_line` | suffix | `列` | 数読み + `れつ` |
+| `kuchi` | suffix | `口` | 数読み + `くち` |
+| `kire` | suffix | `切れ`, `切` | 数読み + `きれ` |
+| `tama` | suffix | `玉` | 数読み + `たま` |
+| `suji` | suffix | `筋` | 数読み + `すじ` |
+| `ren` | suffix | `連` | 数読み + `れん` |
+| `te_hand` | suffix | `手` | 数読み + `て` |
+| `kon` | suffix | `梱` | 数読み + `こん` |
+| `shitsu` | suffix | `室` | 数読み + `しつ` |
+| `seki_seat` | suffix | `席` | 数読み + `せき` |
+| `za` | suffix | `座` | 数読み + `ざ` |
+| `ku_phrase` | suffix | `句` | 数読み + `く` |
+| `dai_title` | suffix | `題` | 数読み + `だい` |
+| `kyoku_board` | suffix | `局` | 数読み + `きょく` |
+| `do_counter` | suffix | `度` | 数読み + `ど` |
+| `hen_count` | suffix | `遍` | 数読み + `へん` |
 | `ryou` | suffix | `両` | 数読み + `りょう` |
 | `ki_aircraft` | suffix | `機` | 数読み + `き` |
 | `seki_ship` | suffix | `隻` | 数読み + `せき` |
 | `sou_ship` | suffix | `艘` | 数読み + `そう` |
 | `fukuro` | suffix | `袋` | 数読み + `ふくろ` |
-| `tsubu` | suffix | `粒` | 数読み + `つぶ` |
+| `tsubu` | suffix | `粒`, `つぶ` | 数読み + `つぶ` |
 | `teki_drop` | suffix | `滴` | 数読み + `てき` |
 | `jou_tablet` | suffix | `錠` | 数読み + `じょう` |
 | `man_unit` | suffix | `万` | 数読み + `まん` |
@@ -208,7 +226,7 @@ const g = replaceInText("今日は第3版を1.2本買った");
 
 | counterId | 接頭辞/接尾辞 | 表記 | 主な例外 |
 |---|---|---|---|
-| `sai` | suffix | `歳` | `1=いっさい`, `20=はたち` |
+| `sai` | suffix | `歳`, `才` | `1=いっさい`, `20=はたち` |
 | `nin` | suffix | `人` | `1=ひとり`, `2=ふたり` |
 | `ko` | suffix | `個` | `1/6/8/10` の促音 |
 | `satsu` | suffix | `冊` | `1/8/10` の促音 |
@@ -218,8 +236,8 @@ const g = replaceInText("今日は第3版を1.2本買った");
 | `gai` | suffix | `階` | `3=さんがい`, `1/6/8/10` の促音 |
 | `soku` | suffix | `足` | `3=さんぞく`, `1/8/10` の促音 |
 | `chaku` | suffix | `着` | `1/8/10` の促音 |
-| `kumi` | suffix | `組` | `1=ひとくみ`, `2=ふたくみ` |
-| `hako` | suffix | `箱` | `1=ひとはこ`, `3=さんぱこ` など |
+| `kumi` | suffix | `組`, `くみ` | `1=ひとくみ`, `2=ふたくみ` |
+| `hako` | suffix | `箱` | `1=ひとはこ`, `3=さんばこ` など |
 | `kan` | suffix | `巻` | `1/6/8/10` の促音 |
 | `sha` | suffix | `社` | `1/8/10` の促音 |
 | `chou_me` | suffix | `丁目` | `1/8/10` の促音 |
@@ -235,6 +253,7 @@ const g = replaceInText("今日は第3版を1.2本買った");
 | `nen` | suffix | `年` | `4=よねん`, `7=しちねん` |
 | `jikan` | suffix | `時間` | `4=よじかん`, `7=しちじかん` |
 | `shuu` | suffix | `週` | `1/8/10` の促音 |
+| `shuu_cycle` | suffix | `周` | `1/8/10` の促音 |
 | `nin` | suffix | `人` | `1=ひとり`, `2=ふたり`, `4=よにん`, `7=しちにん` |
 | `month` | suffix | `月` | `4=しがつ`, `7=しちがつ`, `9=くがつ` |
 | `ji` | suffix | `時` | `4=よじ`, `7=しちじ`, `9=くじ` |
@@ -245,6 +264,7 @@ const g = replaceInText("今日は第3版を1.2本買った");
 | counterId | 接頭辞/接尾辞 | 表記 | 発音ルール |
 |---|---|---|---|
 | `day` | suffix | `日` | `date` / `duration` で分岐 |
+| `hari` | suffix | `張` | `hari` / `cho` で分岐 |
 
 ### 接尾助数詞接尾（後置）
 
@@ -264,6 +284,10 @@ const g = replaceInText("今日は第3版を1.2本買った");
   - `1日` -> `ついたち`
 - `day=duration`
   - `1日` -> `いちにち`
+- `hari=hari`（デフォルト）
+  - `2張` -> `にはり`
+- `hari=cho`
+  - `2張` -> `にちょう`
 
 ## ルールファイル
 

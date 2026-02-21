@@ -456,6 +456,187 @@
         "suffixReading": ["ぎょう"]
       }
     },
+    "retsu_line": {
+      "surface": {
+        "suffix": ["列"]
+      },
+      "compose": {
+        "type": "concat",
+        "suffixReading": ["れつ"]
+      }
+    },
+    "kuchi": {
+      "surface": {
+        "suffix": ["口"]
+      },
+      "compose": {
+        "type": "concat",
+        "suffixReading": ["くち"]
+      }
+    },
+    "kire": {
+      "surface": {
+        "suffix": ["切れ", "切"]
+      },
+      "compose": {
+        "type": "concat",
+        "suffixReading": ["きれ"]
+      }
+    },
+    "tama": {
+      "surface": {
+        "suffix": ["玉"]
+      },
+      "compose": {
+        "type": "concat",
+        "suffixReading": ["たま"]
+      }
+    },
+    "suji": {
+      "surface": {
+        "suffix": ["筋"]
+      },
+      "compose": {
+        "type": "concat",
+        "suffixReading": ["すじ"]
+      }
+    },
+    "ren": {
+      "surface": {
+        "suffix": ["連"]
+      },
+      "compose": {
+        "type": "concat",
+        "suffixReading": ["れん"]
+      }
+    },
+    "hari": {
+      "surface": {
+        "suffix": ["張"]
+      },
+      "defaultMode": "hari",
+      "modes": {
+        "hari": {
+          "compose": {
+            "type": "concat",
+            "suffixReading": ["はり"]
+          }
+        },
+        "cho": {
+          "compose": {
+            "type": "concat",
+            "suffixReading": ["ちょう"]
+          }
+        }
+      }
+    },
+    "te_hand": {
+      "surface": {
+        "suffix": ["手"]
+      },
+      "compose": {
+        "type": "concat",
+        "suffixReading": ["て"]
+      }
+    },
+    "kon": {
+      "surface": {
+        "suffix": ["梱"]
+      },
+      "compose": {
+        "type": "concat",
+        "suffixReading": ["こん"]
+      }
+    },
+    "shitsu": {
+      "surface": {
+        "suffix": ["室"]
+      },
+      "compose": {
+        "type": "concat",
+        "suffixReading": ["しつ"]
+      }
+    },
+    "seki_seat": {
+      "surface": {
+        "suffix": ["席"]
+      },
+      "compose": {
+        "type": "concat",
+        "suffixReading": ["せき"]
+      }
+    },
+    "za": {
+      "surface": {
+        "suffix": ["座"]
+      },
+      "compose": {
+        "type": "concat",
+        "suffixReading": ["ざ"]
+      }
+    },
+    "ku_phrase": {
+      "surface": {
+        "suffix": ["句"]
+      },
+      "compose": {
+        "type": "concat",
+        "suffixReading": ["く"]
+      }
+    },
+    "dai_title": {
+      "surface": {
+        "suffix": ["題"]
+      },
+      "compose": {
+        "type": "concat",
+        "suffixReading": ["だい"]
+      }
+    },
+    "kyoku_board": {
+      "surface": {
+        "suffix": ["局"]
+      },
+      "compose": {
+        "type": "concat",
+        "suffixReading": ["きょく"]
+      }
+    },
+    "do_counter": {
+      "surface": {
+        "suffix": ["度"]
+      },
+      "compose": {
+        "type": "concat",
+        "suffixReading": ["ど"]
+      }
+    },
+    "shuu_cycle": {
+      "surface": {
+        "suffix": ["周"]
+      },
+      "compose": {
+        "type": "exceptions_first",
+        "exceptions": {
+          "1": ["いっ", "しゅう"],
+          "8": ["はっ", "しゅう"],
+          "10": ["じゅっ", "しゅう"]
+        },
+        "fallback": {
+          "type": "concat",
+          "suffixReading": ["しゅう"]
+        }
+      }
+    },
+    "hen_count": {
+      "surface": {
+        "suffix": ["遍"]
+      },
+      "compose": {
+        "type": "concat",
+        "suffixReading": ["へん"]
+      }
+    },
     "ryou": {
       "surface": {
         "suffix": ["両"]
@@ -503,7 +684,7 @@
     },
     "tsubu": {
       "surface": {
-        "suffix": ["粒"]
+        "suffix": ["粒", "つぶ"]
       },
       "compose": {
         "type": "concat",
@@ -594,7 +775,7 @@
     },
     "sai": {
       "surface": {
-        "suffix": ["歳"]
+        "suffix": ["歳", "才"]
       },
       "compose": {
         "type": "exceptions_first",
@@ -815,7 +996,7 @@
     },
     "kumi": {
       "surface": {
-        "suffix": ["組"]
+        "suffix": ["組", "くみ"]
       },
       "compose": {
         "type": "exceptions_first",

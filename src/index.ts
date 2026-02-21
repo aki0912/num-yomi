@@ -32,6 +32,16 @@ interface CounterPostfixMatch {
   reading: readonly string[];
 }
 
+interface ParsedNumberTokens {
+  normalized: string;
+  tokens: string[];
+}
+
+interface TaiExpression {
+  left: string;
+  right: string;
+}
+
 function detectCounterPrefix(input: string): CounterPrefixMatch | undefined {
   let best: CounterPrefixMatch | undefined;
   for (const prefix of COUNTER_PREFIXES) {
@@ -190,6 +200,29 @@ function shouldConvertBareNumberFragment(input: string, start: number, end: numb
   return true;
 }
 
+function detectTaiExpression(input: string): TaiExpression | null {
+  const splitAt = input.indexOf("対");
+  if (splitAt <= 0) {
+    return null;
+  }
+  if (splitAt !== input.lastIndexOf("対")) {
+    return null;
+  }
+  if (splitAt >= input.length - 1) {
+    return null;
+  }
+  const left = input.slice(0, splitAt);
+  const right = input.slice(splitAt + 1);
+  if (!hasParsableNumberText(left) || !hasParsableNumberText(right)) {
+    return null;
+  }
+  return { left, right };
+}
+
+function isTaiExpressionFragment(fragment: string): boolean {
+  return detectTaiExpression(normalizeInput(fragment)) !== null;
+}
+
 function replaceInTextWithRules(input: string, rules: RuleBundle, options?: ReadOptions): string {
   if (input.length === 0) {
     return input;
@@ -217,7 +250,7 @@ function replaceInTextWithRules(input: string, rules: RuleBundle, options?: Read
         continue;
       }
       if (!containsMarker(fragment, markers)) {
-        if (!shouldConvertBareNumberFragment(input, index, end, fragment)) {
+        if (!shouldConvertBareNumberFragment(input, index, end, fragment) && !isTaiExpressionFragment(fragment)) {
           continue;
         }
       }
@@ -278,8 +311,69 @@ function readDecimalTokens(
   return [...prefix, DECIMAL_POINT_TOKEN, ...fractionDigits.map((d) => readFractionDigitToken(d, rules, options))];
 }
 
+function readNumberTextTokens(numberText: string, rules: RuleBundle, options?: ReadOptions): ParsedNumberTokens | null {
+  const decimal = parseArabicDecimal(numberText);
+  if (decimal) {
+    return {
+      normalized: decimal.normalized,
+      tokens: readDecimalTokens(decimal.sign, decimal.integerPart, decimal.fractionDigits, rules, options),
+    };
+  }
+  const value = parseNumber(numberText);
+  if (value === null) {
+    return null;
+  }
+  return {
+    normalized: value.toString(),
+    tokens: readNumberTokens(value, rules.core, options?.variant),
+  };
+}
+
+function normalizeTaiLeftTokens(tokens: string[]): string[] {
+  if (tokens.length === 0) {
+    return tokens;
+  }
+  const last = tokens[tokens.length - 1];
+  if (last !== "いち") {
+    return tokens;
+  }
+  return [...tokens.slice(0, -1), "いっ"];
+}
+
+function readTaiExpressionTokens(input: string, rules: RuleBundle, options?: ReadOptions) {
+  const expr = detectTaiExpression(input);
+  if (!expr) {
+    return null;
+  }
+  const left = readNumberTextTokens(expr.left, rules, options);
+  if (!left) {
+    return null;
+  }
+  const right = readNumberTextTokens(expr.right, rules, options);
+  if (!right) {
+    return null;
+  }
+  const tokens = [...normalizeTaiLeftTokens(left.tokens), "たい", ...right.tokens];
+  return {
+    number: `${left.normalized}対${right.normalized}`,
+    tokens,
+  };
+}
+
 function toReading(input: string, rules: RuleBundle, options?: ReadOptions) {
   const normalized = normalizeInput(input);
+  const tai = readTaiExpressionTokens(normalized, rules, options);
+  if (tai) {
+    return {
+      input,
+      normalized,
+      number: tai.number,
+      counterId: undefined,
+      modeUsed: undefined,
+      tokens: tai.tokens,
+      reading: joinTokens(tai.tokens),
+    } satisfies ReadResult;
+  }
   let prefix: CounterPrefixMatch | undefined;
   let postfix: CounterPostfixMatch | undefined;
   let counterInput = normalized;
