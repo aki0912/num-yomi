@@ -21,6 +21,8 @@
 ## 設計ドキュメント
 
 - ルールファイル設計: `docs/rule_files_design.md`
+- コントリビューションガイド: `CONTRIBUTING.md`
+- 変更履歴: `CHANGELOG.md`
 
 ## 要件
 
@@ -424,6 +426,32 @@ pnpm bench:node
 pnpm bench:python
 pnpm bench:rust
 ```
+
+計測環境（2026-02-21 時点）:
+
+- Node.js: `v25.6.1`
+- Python: `3.11.9`
+- Rust: `rustc 1.92.0`, `cargo 1.92.0`
+- OS: `Darwin 25.3.0 (arm64, Apple Silicon)`
+
+直近計測結果（2026-02-21, `--iterations 20000`, 2回計測レンジ）:
+
+- `pnpm bench:compare`（call-style）
+  - Node: `39 - 44 ms`
+  - Python: `360 - 430 ms`
+  - Rust: `24 - 30 ms`
+- `pnpm bench:compare:replace:call`
+  - Node: `9 - 12 ms`
+  - Python: `65 - 75 ms`
+  - Rust: `3 - 6 ms`
+
+注: ベンチ結果はマシン負荷や実行タイミングで多少ぶれます。
+
+## 公開方針メモ
+
+- GitHub 公開はそのまま可能です。
+- `package.json` の `private: true` は npm への誤公開防止設定です。
+  npm 公開する場合のみ `private: false` に変更して、`name`/`version`/`files` などを最終確認してください。
 
 ## ライセンス
 
