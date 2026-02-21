@@ -18,7 +18,7 @@ export interface ReadOptions {
 export interface ReadResult {
   input: string;
   normalized: string;
-  number: bigint;
+  number: bigint | string;
   counterId?: string;
   modeUsed?: string;
   tokens: ReadingToken[];

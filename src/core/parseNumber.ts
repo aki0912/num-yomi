@@ -1,4 +1,5 @@
 const ARABIC_RE = /^[-+]?\d+$/;
+const DECIMAL_RE = /^([+-]?)(\d+)\.(\d+)$/;
 
 const KA_NUMBERS: Record<string, number> = {
   零: 0,
@@ -94,4 +95,30 @@ export function parseNumber(input: string): bigint | null {
     return BigInt(input);
   }
   return parseKansuji(input);
+}
+
+export interface ParsedArabicDecimal {
+  sign: 1 | -1;
+  integerPart: bigint;
+  fractionDigits: number[];
+  normalized: string;
+}
+
+export function parseArabicDecimal(input: string): ParsedArabicDecimal | null {
+  const match = DECIMAL_RE.exec(input);
+  if (!match) {
+    return null;
+  }
+
+  const sign = match[1] === "-" ? -1 : 1;
+  const integerText = match[2];
+  const fractionText = match[3];
+
+  const fractionDigits = Array.from(fractionText, (ch) => ch.charCodeAt(0) - 48);
+  return {
+    sign,
+    integerPart: BigInt(integerText),
+    fractionDigits,
+    normalized: `${sign < 0 ? "-" : ""}${integerText}.${fractionText}`,
+  };
 }

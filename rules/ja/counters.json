@@ -19,6 +19,15 @@
         "suffixReading": ["どる"]
       }
     },
+    "celsius": {
+      "surface": {
+        "suffix": ["℃", "°C"]
+      },
+      "compose": {
+        "type": "concat",
+        "suffixReading": ["ど"]
+      }
+    },
     "hon": {
       "surface": {
         "suffix": ["本"]

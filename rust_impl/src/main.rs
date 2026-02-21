@@ -13,6 +13,7 @@ use unicode_normalization::UnicodeNormalization;
 type Token = &'static str;
 type Tokens = &'static [Token];
 type TokenBuf = SmallVec<[Token; 16]>;
+const DECIMAL_POINT_TOKEN: Token = "てん";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum ZeroVariant {
@@ -303,6 +304,12 @@ fn runtime_rules() -> &'static RuntimeRules {
 struct CounterMatch<'a> {
     counter: &'static CounterDef,
     number_part: &'a str,
+}
+
+struct ParsedDecimal {
+    negative: bool,
+    integer_part: NumberValue,
+    fraction_digits: Vec<u8>,
 }
 
 fn main() {
@@ -606,6 +613,25 @@ fn read_with_options(
         .map(|m| m.number_part)
         .unwrap_or(normalized.as_str());
 
+    if let Some(decimal) = parse_decimal(number_text) {
+        let base_tokens = read_decimal_tokens(&decimal, rules.core, options)?;
+        let final_tokens = if let Some(matched) = detected {
+            match apply_counter_decimal(matched.counter, &base_tokens, options) {
+                Ok(tokens) => tokens,
+                Err(message) => {
+                    if options.strict {
+                        return Err(message);
+                    }
+                    return Ok(None);
+                }
+            }
+        } else {
+            base_tokens
+        };
+
+        return Ok(Some(join_tokens(&final_tokens)));
+    }
+
     let number_value = parse_number(number_text);
     let Some(number_value) = number_value else {
         if options.strict {
@@ -682,6 +708,59 @@ fn parse_number(input: &str) -> Option<NumberValue> {
     }
 
     parse_kansuji(input)
+}
+
+fn parse_decimal(input: &str) -> Option<ParsedDecimal> {
+    if input.is_empty() {
+        return None;
+    }
+
+    let bytes = input.as_bytes();
+    let mut start = 0usize;
+    let mut negative = false;
+
+    if bytes[0] == b'+' || bytes[0] == b'-' {
+        if input.len() == 1 {
+            return None;
+        }
+        negative = bytes[0] == b'-';
+        start = 1;
+    }
+
+    let dot_rel = input[start..].find('.')?;
+    let dot_pos = start + dot_rel;
+    if input[dot_pos + 1..].contains('.') {
+        return None;
+    }
+
+    let integer_text = &input[start..dot_pos];
+    let fraction_text = &input[dot_pos + 1..];
+    if integer_text.is_empty() || fraction_text.is_empty() {
+        return None;
+    }
+    if !integer_text.as_bytes().iter().all(|b| b.is_ascii_digit()) {
+        return None;
+    }
+    if !fraction_text.as_bytes().iter().all(|b| b.is_ascii_digit()) {
+        return None;
+    }
+
+    let integer_part = if let Ok(v) = integer_text.parse::<i64>() {
+        NumberValue::Small(v)
+    } else {
+        NumberValue::Big(BigInt::parse_bytes(integer_text.as_bytes(), 10)?)
+    };
+    let fraction_digits = fraction_text
+        .as_bytes()
+        .iter()
+        .map(|b| *b - b'0')
+        .collect::<Vec<u8>>();
+
+    Some(ParsedDecimal {
+        negative,
+        integer_part,
+        fraction_digits,
+    })
 }
 
 fn is_arabic_int(input: &str) -> bool {
@@ -979,6 +1058,51 @@ fn read_number_tokens(
     Ok(out)
 }
 
+fn read_decimal_tokens(
+    decimal: &ParsedDecimal,
+    core: &CoreRules,
+    options: &ReadOptions,
+) -> Result<TokenBuf, String> {
+    let mut integer_tokens = read_number_tokens(&decimal.integer_part, core, options)?;
+
+    if decimal.negative {
+        let mut prefixed = TokenBuf::with_capacity(core.minus.len() + integer_tokens.len());
+        prefixed.extend_from_slice(core.minus);
+        prefixed.append(&mut integer_tokens);
+        integer_tokens = prefixed;
+    }
+
+    let mut out = TokenBuf::with_capacity(integer_tokens.len() + 1 + decimal.fraction_digits.len());
+    out.extend(integer_tokens);
+    out.push(DECIMAL_POINT_TOKEN);
+
+    for digit in &decimal.fraction_digits {
+        out.push(read_fraction_digit_token(*digit, core, options)?);
+    }
+
+    Ok(out)
+}
+
+fn read_fraction_digit_token(
+    digit: u8,
+    core: &CoreRules,
+    options: &ReadOptions,
+) -> Result<Token, String> {
+    if digit == 0 {
+        let zero_variant = options.zero.unwrap_or(core.default_variant.zero);
+        return Ok(match zero_variant {
+            ZeroVariant::Rei => core.variants.zero.rei,
+            ZeroVariant::Zero => core.variants.zero.zero,
+        });
+    }
+
+    let mut buf = TokenBuf::new();
+    push_digit_token(&mut buf, u32::from(digit), core, options)?;
+    buf.first()
+        .copied()
+        .ok_or_else(|| "digit token generation failed".to_string())
+}
+
 fn read_number_tokens_small(
     value: u64,
     core: &CoreRules,
@@ -1140,13 +1264,7 @@ fn find_big_unit(core: &CoreRules, pow10: u32) -> Option<Tokens> {
         .map(|(_, tokens)| *tokens)
 }
 
-fn apply_counter(
-    counter: &CounterDef,
-    number: &NumberValue,
-    base_tokens: &TokenBuf,
-    options: &ReadOptions,
-    rules: &RuntimeRules,
-) -> TokenBuf {
+fn resolve_counter_compose(counter: &CounterDef, options: &ReadOptions) -> Option<Compose> {
     let requested_mode = options.mode_for(counter.id);
     let mode_name = match requested_mode {
         Some(mode_id) if counter.modes.iter().any(|m| m.id == mode_id) => Some(mode_id),
@@ -1161,12 +1279,46 @@ fn apply_counter(
             .map(|m| m.compose)
     });
 
-    let compose = mode_compose.or(counter.compose);
+    mode_compose.or(counter.compose)
+}
+
+fn apply_counter(
+    counter: &CounterDef,
+    number: &NumberValue,
+    base_tokens: &TokenBuf,
+    options: &ReadOptions,
+    rules: &RuntimeRules,
+) -> TokenBuf {
+    let compose = resolve_counter_compose(counter, options);
     let Some(compose) = compose else {
         return base_tokens.clone();
     };
 
     apply_compose(compose, number, base_tokens, rules)
+}
+
+fn apply_counter_decimal(
+    counter: &CounterDef,
+    base_tokens: &TokenBuf,
+    options: &ReadOptions,
+) -> Result<TokenBuf, String> {
+    let compose = resolve_counter_compose(counter, options);
+    let Some(compose) = compose else {
+        return Ok(base_tokens.clone());
+    };
+
+    match compose {
+        Compose::Concat(suffix) => {
+            let mut out = TokenBuf::with_capacity(base_tokens.len() + suffix.len());
+            out.extend_from_slice(base_tokens);
+            out.extend_from_slice(suffix);
+            Ok(out)
+        }
+        _ => Err(format!(
+            "Decimal values with counter '{}' are only supported for concat compose",
+            counter.id
+        )),
+    }
 }
 
 fn apply_compose(

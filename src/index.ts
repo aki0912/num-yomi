@@ -1,16 +1,103 @@
 import type { ReadOptions, ReadResult, RuleBundle, YomiJa } from "./rules/types.js";
 import { normalizeInput } from "./core/normalize.js";
-import { parseNumber } from "./core/parseNumber.js";
+import { parseArabicDecimal, parseNumber } from "./core/parseNumber.js";
 import { readNumberTokens } from "./core/readNumberTokens.js";
 import { joinTokens } from "./core/join.js";
 import { detectCounter } from "./counters/detect.js";
 import { applyCounter } from "./counters/apply.js";
 import { loadRules } from "./rules/load.js";
 
+const DECIMAL_POINT_TOKEN = "てん";
+
+function resolveCounterCompose(rules: RuleBundle, counterId: string, options?: ReadOptions) {
+  const counter = rules.counters.counters[counterId];
+  if (!counter) {
+    return { compose: undefined, modeUsed: undefined };
+  }
+
+  const requestedMode = options?.mode?.[counterId];
+  const modeUsed = requestedMode && counter.modes?.[requestedMode] ? requestedMode : counter.defaultMode;
+  const modeCompose = modeUsed ? counter.modes?.[modeUsed]?.compose : undefined;
+  return {
+    compose: modeCompose ?? counter.compose,
+    modeUsed,
+  };
+}
+
+function readFractionDigitToken(digit: number, rules: RuleBundle, options?: ReadOptions): string {
+  if (digit === 0) {
+    const zeroKey = options?.variant?.zero ?? rules.core.defaultVariant.zero;
+    return rules.core.variants.zero[zeroKey];
+  }
+  const tokens = readNumberTokens(BigInt(digit), rules.core, options?.variant);
+  return tokens[0];
+}
+
+function readDecimalTokens(
+  sign: 1 | -1,
+  integerPart: bigint,
+  fractionDigits: number[],
+  rules: RuleBundle,
+  options?: ReadOptions
+) {
+  const integerTokens = readNumberTokens(integerPart, rules.core, options?.variant);
+  const prefix = sign < 0 ? [...rules.core.minus, ...integerTokens] : integerTokens;
+  return [...prefix, DECIMAL_POINT_TOKEN, ...fractionDigits.map((d) => readFractionDigitToken(d, rules, options))];
+}
+
 function toReading(input: string, rules: RuleBundle, options?: ReadOptions) {
   const normalized = normalizeInput(input);
   const detected = detectCounter(normalized, rules.counters);
   const numberText = detected ? detected.numberPart : normalized;
+  const decimal = parseArabicDecimal(numberText);
+  if (decimal) {
+    const baseTokens = readDecimalTokens(decimal.sign, decimal.integerPart, decimal.fractionDigits, rules, options);
+    if (!detected) {
+      return {
+        input,
+        normalized,
+        number: decimal.normalized,
+        counterId: undefined,
+        modeUsed: undefined,
+        tokens: baseTokens,
+        reading: joinTokens(baseTokens),
+      } satisfies ReadResult;
+    }
+
+    const resolved = resolveCounterCompose(rules, detected.counterId, options);
+    if (!resolved.compose) {
+      return {
+        input,
+        normalized,
+        number: decimal.normalized,
+        counterId: detected.counterId,
+        modeUsed: resolved.modeUsed,
+        tokens: baseTokens,
+        reading: joinTokens(baseTokens),
+      } satisfies ReadResult;
+    }
+
+    if (resolved.compose.type !== "concat") {
+      if (options?.strict) {
+        throw new Error(
+          `Decimal values with counter '${detected.counterId}' are only supported for concat compose`
+        );
+      }
+      return null;
+    }
+
+    const tokens = [...baseTokens, ...resolved.compose.suffixReading];
+    return {
+      input,
+      normalized,
+      number: decimal.normalized,
+      counterId: detected.counterId,
+      modeUsed: resolved.modeUsed,
+      tokens,
+      reading: joinTokens(tokens),
+    } satisfies ReadResult;
+  }
+
   const numberValue = parseNumber(numberText);
 
   if (numberValue === null) {

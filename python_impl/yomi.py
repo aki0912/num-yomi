@@ -40,6 +40,8 @@ BIG_UNITS: Dict[str, int] = {
     "京": 10_000_000_000_000_000,
 }
 
+DECIMAL_POINT_TOKEN = "てん"
+
 __all__ = [
     "YomiJaPy",
     "create_yomi",
@@ -187,6 +189,40 @@ def parse_number(input_text: str) -> Optional[int]:
     return parse_kansuji(input_text)
 
 
+def parse_decimal(input_text: str) -> Optional[Dict[str, Any]]:
+    if not input_text:
+        return None
+
+    sign = 1
+    start = 0
+    if input_text[0] in ("+", "-"):
+        if len(input_text) == 1:
+            return None
+        if input_text[0] == "-":
+            sign = -1
+        start = 1
+
+    dot_pos = input_text.find(".", start)
+    if dot_pos < 0:
+        return None
+    if input_text.find(".", dot_pos + 1) >= 0:
+        return None
+
+    int_part = input_text[start:dot_pos]
+    frac_part = input_text[dot_pos + 1 :]
+    if not int_part or not frac_part:
+        return None
+    if not int_part.isdigit() or not frac_part.isdigit():
+        return None
+
+    return {
+        "sign": sign,
+        "integerPart": int(int_part),
+        "fractionDigits": [ord(ch) - 48 for ch in frac_part],
+        "normalized": f"{'-' if sign < 0 else ''}{int_part}.{frac_part}",
+    }
+
+
 def is_arabic_int(input_text: str) -> bool:
     if not input_text:
         return False
@@ -307,6 +343,29 @@ def read_number_tokens(
     return merged
 
 
+def read_fraction_digit_token(digit: int, core: Dict[str, Any], options: Optional[Dict[str, Any]]) -> str:
+    if digit == 0:
+        zero_key = resolve_variant(options, "zero", core["defaultVariant"]["zero"])
+        return core["variants"]["zero"][zero_key]
+    return read_digit_tokens(digit, core, options)[0]
+
+
+def read_decimal_tokens(
+    sign: int,
+    integer_part: int,
+    fraction_digits: List[int],
+    core: Dict[str, Any],
+    options: Optional[Dict[str, Any]],
+    unit_by_pow10: Dict[int, List[str]],
+) -> List[str]:
+    integer_tokens = read_number_tokens(integer_part, core, options, unit_by_pow10)
+    prefix = (list(core["minus"]) + integer_tokens) if sign < 0 else integer_tokens
+    out = list(prefix)
+    out.append(DECIMAL_POINT_TOKEN)
+    out.extend(read_fraction_digit_token(digit, core, options) for digit in fraction_digits)
+    return out
+
+
 def apply_tail_pattern(pattern: Dict[str, Any], tokens: List[str]) -> Tuple[List[str], str]:
     if not tokens:
         return tokens, pattern["defaultForm"]
@@ -371,9 +430,21 @@ def apply_counter(
     number_tokens: List[str],
     options: Optional[Dict[str, Any]],
 ) -> Tuple[List[str], Optional[str]]:
+    compose, mode_name = resolve_counter_compose(counter_defs, counter_id, options)
+    if not isinstance(compose, dict):
+        return number_tokens, mode_name
+
+    return apply_compose(compose, number_value, number_tokens, pattern_defs), mode_name
+
+
+def resolve_counter_compose(
+    counter_defs: Dict[str, Any],
+    counter_id: str,
+    options: Optional[Dict[str, Any]],
+) -> Tuple[Optional[Dict[str, Any]], Optional[str]]:
     counter = counter_defs.get(counter_id)
     if not isinstance(counter, dict):
-        return number_tokens, None
+        return None, None
 
     mode_overrides = options.get("mode") if isinstance(options, dict) else None
     requested_mode: Optional[str] = None
@@ -397,9 +468,8 @@ def apply_counter(
 
     compose = mode_compose if isinstance(mode_compose, dict) else counter.get("compose")
     if not isinstance(compose, dict):
-        return number_tokens, mode_name
-
-    return apply_compose(compose, number_value, number_tokens, pattern_defs), mode_name
+        return None, mode_name
+    return compose, mode_name
 
 
 class YomiJaPy:
@@ -423,9 +493,48 @@ class YomiJaPy:
         normalized = normalize_input(input_text)
         detected = detect_counter(normalized, self.prefixes_by_head, self.suffixes_by_tail)
         number_text = detected["numberPart"] if detected else normalized
-        number_value = parse_number(number_text)
-
         strict = bool(options.get("strict")) if isinstance(options, dict) else False
+
+        decimal = parse_decimal(number_text)
+        if decimal is not None:
+            base_tokens = read_decimal_tokens(
+                decimal["sign"],
+                decimal["integerPart"],
+                decimal["fractionDigits"],
+                self.core,
+                options,
+                self.unit_by_pow10,
+            )
+
+            if detected:
+                compose, mode_used = resolve_counter_compose(self.counter_defs, detected["counterId"], options)
+                counter_id = detected["counterId"]
+                if isinstance(compose, dict):
+                    if compose.get("type") != "concat":
+                        if strict:
+                            raise ValueError(
+                                f"Decimal values with counter '{counter_id}' are only supported for concat compose"
+                            )
+                        return None
+                    tokens = list(base_tokens) + list(compose.get("suffixReading", []))
+                else:
+                    tokens = base_tokens
+            else:
+                tokens = base_tokens
+                mode_used = None
+                counter_id = None
+
+            return {
+                "input": input_text,
+                "normalized": normalized,
+                "number": decimal["normalized"],
+                "counterId": counter_id,
+                "modeUsed": mode_used,
+                "tokens": tokens,
+                "reading": "".join(tokens),
+            }
+
+        number_value = parse_number(number_text)
         if number_value is None:
             if strict:
                 raise ValueError(f"Unable to parse number from input: {input_text}")
