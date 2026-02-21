@@ -65,13 +65,13 @@ function parseArgs(argv: string[]) {
 
 function printHelp() {
   console.log([
-    "Usage: yomi \"¥300\" [--zero rei|zero] [--mode counter=mode] [--strict] [--replace]",
+    "Usage: num-yomi \"¥300\" [--zero rei|zero] [--mode counter=mode] [--strict] [--replace]",
     "",
     "Examples:",
-    "  yomi \"¥300\"",
-    "  yomi \"1日\" --mode day=date",
-    "  yomi \"今日は第3版を1.2本買った\" --replace",
-    "  yomi \"300円\" --strict",
+    "  num-yomi \"¥300\"",
+    "  num-yomi \"1日\" --mode day=date",
+    "  num-yomi \"今日は第3版を1.2本買った\" --replace",
+    "  num-yomi \"300円\" --strict",
   ].join("\n"));
 }
 

@@ -1,4 +1,4 @@
-from .yomi import (
+from .num_yomi import (
     YomiJaPy,
     create_yomi,
     get_default_yomi,

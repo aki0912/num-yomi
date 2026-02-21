@@ -190,7 +190,7 @@ def main() -> None:
 
         py_cmd = [
             "python3",
-            "python_impl/yomi.py",
+            "python_impl/num_yomi.py",
             "bench",
             "--cases",
             cases_path,
@@ -206,7 +206,7 @@ def main() -> None:
             "--manifest-path",
             "rust_impl/Cargo.toml",
             "--bin",
-            "yomi_rust",
+            "num-yomi-rust",
             "--",
             "bench",
             "--cases",

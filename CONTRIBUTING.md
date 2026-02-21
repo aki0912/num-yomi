@@ -27,7 +27,7 @@ pnpm test
 pnpm build
 pnpm test
 pnpm bench:compare
-pnpm bench:compare:replace:call
+pnpm bench:compare:replace
 ```
 
 4. 変更内容とベンチ結果を PR に記載する
@@ -51,4 +51,3 @@ pnpm bench:compare:replace:call
 - 変更ファイルの概要
 - 互換性への影響（あれば）
 - 実行した検証コマンドと結果（build/test/bench）
-

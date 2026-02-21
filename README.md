@@ -32,7 +32,6 @@
 ## セットアップ
 
 ```bash
-cd ./japanese_number_reading
 pnpm install
 pnpm build
 pnpm test
@@ -43,8 +42,8 @@ pnpm test
 ## CLI で使う
 
 ```bash
-cd ./japanese_number_reading
-node dist/cli/yomi.js "300円"
+pnpm build
+pnpm num-yomi "300円"
 ```
 
 オプション:
@@ -57,16 +56,16 @@ node dist/cli/yomi.js "300円"
 例:
 
 ```bash
-node dist/cli/yomi.js "1日" --mode day=duration
-node dist/cli/yomi.js "0" --zero zero
-node dist/cli/yomi.js "$100"
-node dist/cli/yomi.js "今日は第3版を1.2本買った" --replace
+pnpm num-yomi "1日" --mode day=duration
+pnpm num-yomi "0" --zero zero
+pnpm num-yomi "$100"
+pnpm num-yomi "今日は第3版を1.2本買った" --replace
 ```
 
 変換箇所レポート付きのファイル変換:
 
 ```bash
-node dist/cli/yomi-file.js ./input.txt --out ./output.txt
+pnpm replace-num-yomi ./input.txt --out ./output.txt
 ```
 
 - 標準出力: 変換された部分だけ（位置 + `source -> reading`）
@@ -341,7 +340,7 @@ pnpm test
 
 同じルールファイル（`rules/ja/*.json`）を読む実装を用意しています。
 
-- Python: `python_impl/yomi.py`
+- Python: `python_impl/num_yomi.py`
 - Rust: `rust_impl/src/lib.rs`（ライブラリ）, `rust_impl/src/main.rs`（CLI）
 
 Rust 実装は `build.rs` で `rules/ja/*.json` をビルド時に構造体定数へ変換します。
@@ -366,13 +365,13 @@ print(yomi.replace_in_text("今日は第3版を1.2本買った"))
 Rust から呼ぶ例:
 
 ```toml
-# Cargo.toml
+# Cargo.toml（path は配置に合わせて調整）
 [dependencies]
-yomi_rust = { path = "../japanese_number_reading/rust_impl" }
+num-yomi-rust = { path = "../<project-root>/rust_impl" }
 ```
 
 ```rust
-use yomi_rust::{read, read_number_i64, replace_in_text, ReadConfig};
+use num_yomi_rust::{read, read_number_i64, replace_in_text, ReadConfig};
 
 fn main() {
     let out = read("300円", None).unwrap().unwrap();
@@ -393,7 +392,7 @@ fn main() {
 単発実行例:
 
 ```bash
-python3 python_impl/yomi.py read \"300円\"
+python3 python_impl/num_yomi.py read \"300円\"
 cargo run --manifest-path rust_impl/Cargo.toml -- replace \"今日は第3版を1.2本買った\"
 cargo run --manifest-path rust_impl/Cargo.toml -- read \"300円\"
 ```
@@ -409,8 +408,8 @@ pnpm build
 # 比較実行（ケースごとの表を出力）
 pnpm bench:compare
 
-# 呼び出し形式API（ライブラリ関数直呼び）で比較
-pnpm bench:compare:call
+# 文中置換の呼び出し形式API（ライブラリ関数直呼び）で比較
+pnpm bench:compare:replace
 ```
 
 反復回数を変更する例:
@@ -437,13 +436,13 @@ pnpm bench:rust
 直近計測結果（2026-02-21, `--iterations 20000`, 2回計測レンジ）:
 
 - `pnpm bench:compare`（call-style）
-  - Node: `39 - 44 ms`
+  - Node: `39 - 45 ms`
   - Python: `360 - 430 ms`
-  - Rust: `24 - 30 ms`
-- `pnpm bench:compare:replace:call`
+  - Rust: `19 - 30 ms`
+- `pnpm bench:compare:replace`
   - Node: `9 - 12 ms`
-  - Python: `65 - 75 ms`
-  - Rust: `3 - 6 ms`
+  - Python: `65 - 76 ms`
+  - Rust: `3 - 9 ms`
 
 注: ベンチ結果はマシン負荷や実行タイミングで多少ぶれます。
 

@@ -423,7 +423,7 @@ fn main() {
 
 fn print_usage() {
     eprintln!(
-        "Usage:\n  yomi_rust read <input> [--zero rei|zero] [--mode counter=mode] [--strict]\n  yomi_rust bench [--cases path] [--iterations N]"
+        "Usage:\n  num-yomi-rust read <input> [--zero rei|zero] [--mode counter=mode] [--strict]\n  num-yomi-rust bench [--cases path] [--iterations N]"
     );
 }
 

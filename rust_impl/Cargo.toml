@@ -1,5 +1,5 @@
 [package]
-name = "yomi_rust"
+name = "num-yomi-rust"
 version = "0.1.0"
 edition = "2021"
 build = "build.rs"

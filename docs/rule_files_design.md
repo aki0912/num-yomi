@@ -162,8 +162,8 @@
 
 1. `pnpm build`
 2. `pnpm test`
-3. `pnpm bench:compare:call`
-4. `pnpm bench:compare:replace:call`
+3. `pnpm bench:compare`
+4. `pnpm bench:compare:replace`
 
 ## 9. 設計上の注意点
 
@@ -181,6 +181,6 @@
 - `src/index.ts`
 - `src/rules/types.ts`
 - `src/rules/validate.ts`
-- `python_impl/yomi.py`
+- `python_impl/num_yomi.py`
 - `rust_impl/build.rs`
 - `rust_impl/src/lib.rs`

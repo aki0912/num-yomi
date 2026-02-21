@@ -2,7 +2,7 @@ use serde_json::{json, Value};
 use std::fs;
 use std::path::PathBuf;
 use std::time::Instant;
-use yomi_rust::{
+use num_yomi_rust::{
     read_shared, FourVariantOpt, NineVariantOpt, ReadConfig, SevenVariantOpt, ZeroVariantOpt,
 };
 

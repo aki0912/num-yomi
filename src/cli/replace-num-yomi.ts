@@ -86,16 +86,16 @@ function parseArgs(argv: string[]): CliOptions {
 
 function printHelp(): void {
   console.log([
-    "Usage: yomi-file <input.txt> [--out converted.txt] [--json] [--zero rei|zero] [--mode counter=mode] [--strict]",
+    "Usage: replace-num-yomi <input.txt> [--out converted.txt] [--json] [--zero rei|zero] [--mode counter=mode] [--strict]",
     "",
     "Description:",
     "  Reads a UTF-8 text file and prints only converted segments.",
     "  Use --out to save the fully converted text.",
     "",
     "Examples:",
-    "  yomi-file sample.txt",
-    "  yomi-file sample.txt --out sample.converted.txt",
-    "  yomi-file sample.txt --mode day=date --json",
+    "  replace-num-yomi sample.txt",
+    "  replace-num-yomi sample.txt --out sample.converted.txt",
+    "  replace-num-yomi sample.txt --mode day=date --json",
   ].join("\n"));
 }
 
