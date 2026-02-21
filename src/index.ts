@@ -16,9 +16,11 @@ const COUNTER_POSTFIXES = [
   { marker: "め", reading: ["め"] },
 ] as const;
 const KANJI_NUMERIC_CHARS = new Set(["零", "〇", "一", "二", "三", "四", "五", "六", "七", "八", "九", "十", "百", "千", "万", "億", "兆", "京"]);
-const REPLACE_TRIGGER_RE = /[0-9０-９$¥￥第]/;
+const REPLACE_TRIGGER_RE = /[0-9０-９$¥￥第零〇一二三四五六七八九十百千万億兆京]/;
 const CANDIDATE_START_RE = /[0-9０-９+\-＋－$¥￥第零〇一二三四五六七八九十百千万億兆京]/;
 const MAX_REPLACE_SPAN = 64;
+const SINGLE_KANJI_DIGIT_RE = /^[零〇一二三四五六七八九]$/u;
+const HAN_CHAR_RE = /\p{Script=Han}/u;
 
 interface CounterPrefixMatch {
   marker: string;
@@ -157,8 +159,35 @@ function containsMarker(text: string, markers: string[]): boolean {
   return false;
 }
 
-function isBareParsableNumber(text: string): boolean {
-  return hasParsableNumberText(normalizeInput(text));
+function isAsciiAlphaNumeric(ch: string | undefined): boolean {
+  if (!ch) {
+    return false;
+  }
+  const code = ch.charCodeAt(0);
+  return (code >= 48 && code <= 57) || (code >= 65 && code <= 90) || (code >= 97 && code <= 122);
+}
+
+function isHanChar(ch: string | undefined): boolean {
+  return !!ch && HAN_CHAR_RE.test(ch);
+}
+
+function shouldConvertBareNumberFragment(input: string, start: number, end: number, fragment: string): boolean {
+  const normalized = normalizeInput(fragment);
+  if (!hasParsableNumberText(normalized)) {
+    return false;
+  }
+
+  const before = start > 0 ? input[start - 1] : undefined;
+  const after = end < input.length ? input[end] : undefined;
+  if (isAsciiAlphaNumeric(before) || isAsciiAlphaNumeric(after)) {
+    return false;
+  }
+
+  // Prevent converting single kanji digits inside normal compound words, e.g. 一般.
+  if (SINGLE_KANJI_DIGIT_RE.test(normalized) && (isHanChar(before) || isHanChar(after))) {
+    return false;
+  }
+  return true;
 }
 
 function replaceInTextWithRules(input: string, rules: RuleBundle, options?: ReadOptions): string {
@@ -187,8 +216,10 @@ function replaceInTextWithRules(input: string, rules: RuleBundle, options?: Read
       if (!containsNumericChar(fragment)) {
         continue;
       }
-      if (!containsMarker(fragment, markers) && !isBareParsableNumber(fragment)) {
-        continue;
+      if (!containsMarker(fragment, markers)) {
+        if (!shouldConvertBareNumberFragment(input, index, end, fragment)) {
+          continue;
+        }
       }
       const reading = toReading(fragment, rules, options);
       if (!reading) {
