@@ -28,6 +28,42 @@
         "suffixReading": ["ど"]
       }
     },
+    "man_unit": {
+      "surface": {
+        "suffix": ["万"]
+      },
+      "compose": {
+        "type": "concat",
+        "suffixReading": ["まん"]
+      }
+    },
+    "oku_unit": {
+      "surface": {
+        "suffix": ["億"]
+      },
+      "compose": {
+        "type": "concat",
+        "suffixReading": ["おく"]
+      }
+    },
+    "cho_unit": {
+      "surface": {
+        "suffix": ["兆"]
+      },
+      "compose": {
+        "type": "concat",
+        "suffixReading": ["ちょう"]
+      }
+    },
+    "kei_unit": {
+      "surface": {
+        "suffix": ["京"]
+      },
+      "compose": {
+        "type": "concat",
+        "suffixReading": ["けい"]
+      }
+    },
     "hon": {
       "surface": {
         "suffix": ["本"]

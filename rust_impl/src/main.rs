@@ -707,7 +707,44 @@ fn parse_number(input: &str) -> Option<NumberValue> {
         return BigInt::parse_bytes(input.as_bytes(), 10).map(NumberValue::Big);
     }
 
+    if let Some(v) = parse_scaled_arabic(input) {
+        return Some(v);
+    }
+
     parse_kansuji(input)
+}
+
+fn parse_scaled_arabic(input: &str) -> Option<NumberValue> {
+    if input.chars().count() < 2 {
+        return None;
+    }
+
+    let unit_char = input.chars().next_back()?;
+    let multiplier = big_unit_multiplier(unit_char)?;
+    let number_text = input.strip_suffix(unit_char)?;
+    if !is_arabic_int(number_text) {
+        return None;
+    }
+
+    if let Ok(base_i64) = number_text.parse::<i64>() {
+        let product = (base_i64 as i128).checked_mul(multiplier as i128)?;
+        if let Ok(small) = i64::try_from(product) {
+            return Some(NumberValue::Small(small));
+        }
+    }
+
+    let base_big = number_text.parse::<BigInt>().ok()?;
+    Some(NumberValue::Big(base_big * BigInt::from(multiplier)))
+}
+
+fn big_unit_multiplier(ch: char) -> Option<i64> {
+    match ch {
+        '万' => Some(10_000),
+        '億' => Some(100_000_000),
+        '兆' => Some(1_000_000_000_000),
+        '京' => Some(10_000_000_000_000_000),
+        _ => None,
+    }
 }
 
 fn parse_decimal(input: &str) -> Option<ParsedDecimal> {

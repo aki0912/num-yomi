@@ -186,7 +186,26 @@ def parse_kansuji(input_text: str) -> Optional[int]:
 def parse_number(input_text: str) -> Optional[int]:
     if is_arabic_int(input_text):
         return int(input_text)
+    scaled = parse_scaled_arabic(input_text)
+    if scaled is not None:
+        return scaled
     return parse_kansuji(input_text)
+
+
+def parse_scaled_arabic(input_text: str) -> Optional[int]:
+    if len(input_text) < 2:
+        return None
+
+    unit_char = input_text[-1]
+    unit = BIG_UNITS.get(unit_char)
+    if unit is None:
+        return None
+
+    number_text = input_text[:-1]
+    if not is_arabic_int(number_text):
+        return None
+
+    return int(number_text) * unit
 
 
 def parse_decimal(input_text: str) -> Optional[Dict[str, Any]]:

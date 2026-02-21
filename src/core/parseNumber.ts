@@ -1,5 +1,6 @@
 const ARABIC_RE = /^[-+]?\d+$/;
 const DECIMAL_RE = /^([+-]?)(\d+)\.(\d+)$/;
+const SCALED_ARABIC_RE = /^([+-]?\d+)([万億兆京])$/;
 
 const KA_NUMBERS: Record<string, number> = {
   零: 0,
@@ -94,7 +95,26 @@ export function parseNumber(input: string): bigint | null {
   if (ARABIC_RE.test(input)) {
     return BigInt(input);
   }
+
+  const scaledArabic = parseScaledArabic(input);
+  if (scaledArabic !== null) {
+    return scaledArabic;
+  }
+
   return parseKansuji(input);
+}
+
+function parseScaledArabic(input: string): bigint | null {
+  const match = SCALED_ARABIC_RE.exec(input);
+  if (!match) {
+    return null;
+  }
+  const base = BigInt(match[1]);
+  const unit = BIG_UNITS[match[2]];
+  if (unit === undefined) {
+    return null;
+  }
+  return base * unit;
 }
 
 export interface ParsedArabicDecimal {

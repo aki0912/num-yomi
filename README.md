@@ -102,6 +102,7 @@ const f = custom.read("$100");
 ### 対応
 
 - 算用数字: `5000`, `-12`, `5,000`
+- 算用数字 + 大数単位: `5000億`, `5000億円`
 - 小数（算用数字）: `3.14` -> `さんてんいちよん`
 - 漢数字: `五千`, `三百`, `二〇二〇`
 - 助数詞付き（prefix/suffix 1個）
@@ -131,6 +132,10 @@ const f = custom.read("$100");
 | `yen` | prefix + suffix | `¥`, `￥`, `円` | 数読み + `えん` |
 | `dollar` | prefix | `$` | 数読み + `どる` |
 | `celsius` | suffix | `℃`, `°C` | 数読み + `ど` |
+| `man_unit` | suffix | `万` | 数読み + `まん` |
+| `oku_unit` | suffix | `億` | 数読み + `おく` |
+| `cho_unit` | suffix | `兆` | 数読み + `ちょう` |
+| `kei_unit` | suffix | `京` | 数読み + `けい` |
 | `mai` | suffix | `枚` | 数読み + `まい` |
 | `dai` | suffix | `台` | 数読み + `だい` |
 | `wa` | suffix | `羽` | 数読み + `わ` |
