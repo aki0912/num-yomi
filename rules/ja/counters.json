@@ -28,6 +28,15 @@
         "suffixReading": ["ど"]
       }
     },
+    "meter": {
+      "surface": {
+        "suffix": ["メートル"]
+      },
+      "compose": {
+        "type": "concat",
+        "suffixReading": ["めーとる"]
+      }
+    },
     "mei": {
       "surface": {
         "suffix": ["名"]
@@ -345,8 +354,16 @@
         "suffix": ["章"]
       },
       "compose": {
-        "type": "concat",
-        "suffixReading": ["しょう"]
+        "type": "exceptions_first",
+        "exceptions": {
+          "1": ["いっ", "しょう"],
+          "8": ["はっ", "しょう"],
+          "10": ["じゅっ", "しょう"]
+        },
+        "fallback": {
+          "type": "concat",
+          "suffixReading": ["しょう"]
+        }
       }
     },
     "jou_article": {
@@ -585,6 +602,7 @@
           "1": ["いっ", "さい"],
           "8": ["はっ", "さい"],
           "10": ["じゅっ", "さい"],
+          "11": ["じゅう", "いっ", "さい"],
           "20": ["はたち"]
         },
         "fallback": {
@@ -820,7 +838,7 @@
         "exceptions": {
           "1": ["ひと", "はこ"],
           "2": ["ふた", "はこ"],
-          "3": ["さん", "ぱこ"],
+          "3": ["さん", "ばこ"],
           "6": ["ろっ", "ぱこ"],
           "8": ["はっ", "ぱこ"],
           "10": ["じゅっ", "ぱこ"]
@@ -838,6 +856,15 @@
       "compose": {
         "type": "concat",
         "suffixReading": ["ばん"]
+      }
+    },
+    "i_rank": {
+      "surface": {
+        "suffix": ["位"]
+      },
+      "compose": {
+        "type": "concat",
+        "suffixReading": ["い"]
       }
     },
     "wa_story": {
