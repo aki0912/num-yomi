@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import yomi from "../index.js";
+import { applyCommonReadOptionArg, buildReadOptions } from "./shared.js";
 
 function parseArgs(argv: string[]) {
   const options: {
@@ -15,39 +16,13 @@ function parseArgs(argv: string[]) {
   };
 
   const args = [...argv];
+  const fail = (message: string): never => {
+    console.error(message);
+    process.exit(1);
+  };
   while (args.length > 0) {
     const arg = args.shift();
     if (!arg) break;
-    if (arg === "--zero") {
-      const value = args.shift();
-      if (value === "rei" || value === "zero") {
-        options.zero = value;
-      } else {
-        console.error("--zero expects rei or zero");
-        process.exit(1);
-      }
-      continue;
-    }
-    if (arg === "--mode") {
-      const value = args.shift();
-      if (!value) {
-        console.error("--mode requires counter=mode");
-        process.exit(1);
-      }
-      const split = value.indexOf("=");
-      if (split === -1) {
-        console.error("--mode requires counter=mode");
-        process.exit(1);
-      }
-      const counter = value.slice(0, split);
-      const mode = value.slice(split + 1);
-      options.mode[counter] = mode;
-      continue;
-    }
-    if (arg === "--strict") {
-      options.strict = true;
-      continue;
-    }
     if (arg === "--replace") {
       options.replace = true;
       continue;
@@ -56,9 +31,14 @@ function parseArgs(argv: string[]) {
       printHelp();
       process.exit(0);
     }
+    if (applyCommonReadOptionArg(arg, args, options, fail)) {
+      continue;
+    }
     if (options.input === undefined) {
       options.input = arg;
+      continue;
     }
+    fail(`Unknown argument: ${arg}`);
   }
   return options;
 }
@@ -81,11 +61,7 @@ if (options.input === undefined) {
   process.exit(1);
 }
 
-const readOptions = {
-  strict: options.strict,
-  variant: options.zero ? { zero: options.zero } : undefined,
-  mode: options.mode,
-};
+const readOptions = buildReadOptions(options);
 
 if (options.replace) {
   console.log(yomi.replaceInText(options.input, readOptions));

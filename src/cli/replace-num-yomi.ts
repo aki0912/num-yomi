@@ -3,6 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import type { ReadOptions, ReplaceSegment } from "../rules/types.js";
 import yomi from "../index.js";
+import { applyCommonReadOptionArg, buildReadOptions } from "./shared.js";
 
 interface CliOptions {
   inputPath?: string;
@@ -20,6 +21,10 @@ function parseArgs(argv: string[]): CliOptions {
     json: false,
   };
   const args = [...argv];
+  const fail = (message: string): never => {
+    console.error(message);
+    process.exit(1);
+  };
 
   while (args.length > 0) {
     const arg = args.shift();
@@ -39,46 +44,18 @@ function parseArgs(argv: string[]): CliOptions {
       options.json = true;
       continue;
     }
-    if (arg === "--zero") {
-      const value = args.shift();
-      if (value === "rei" || value === "zero") {
-        options.zero = value;
-      } else {
-        console.error("--zero expects rei or zero");
-        process.exit(1);
-      }
-      continue;
-    }
-    if (arg === "--mode") {
-      const value = args.shift();
-      if (!value) {
-        console.error("--mode requires counter=mode");
-        process.exit(1);
-      }
-      const split = value.indexOf("=");
-      if (split === -1) {
-        console.error("--mode requires counter=mode");
-        process.exit(1);
-      }
-      const counter = value.slice(0, split);
-      const mode = value.slice(split + 1);
-      options.mode[counter] = mode;
-      continue;
-    }
-    if (arg === "--strict") {
-      options.strict = true;
-      continue;
-    }
     if (arg === "--help" || arg === "-h") {
       printHelp();
       process.exit(0);
+    }
+    if (applyCommonReadOptionArg(arg, args, options, fail)) {
+      continue;
     }
     if (!options.inputPath) {
       options.inputPath = arg;
       continue;
     }
-    console.error(`Unknown argument: ${arg}`);
-    process.exit(1);
+    fail(`Unknown argument: ${arg}`);
   }
 
   return options;
@@ -157,11 +134,7 @@ try {
   process.exit(1);
 }
 
-const readOptions: ReadOptions = {
-  strict: options.strict,
-  variant: options.zero ? { zero: options.zero } : undefined,
-  mode: options.mode,
-};
+const readOptions: ReadOptions = buildReadOptions(options);
 
 const result = yomi.replaceInTextDetailed(inputText, readOptions);
 

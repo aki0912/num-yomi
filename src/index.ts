@@ -11,6 +11,7 @@ import { normalizeInput } from "./core/normalize.js";
 import { parseArabicDecimal, parseNumber } from "./core/parseNumber.js";
 import { readNumberTokens } from "./core/readNumberTokens.js";
 import { joinTokens } from "./core/join.js";
+import { HotLruCache } from "./core/cache.js";
 import { detectCounter } from "./counters/detect.js";
 import { applyCounter } from "./counters/apply.js";
 import { loadRules } from "./rules/load.js";
@@ -59,36 +60,6 @@ interface TaiExpression {
   right: string;
 }
 
-class LruCache<V> {
-  private readonly map = new Map<string, V>();
-
-  constructor(private readonly capacity: number) {}
-
-  get(key: string): V | undefined {
-    const value = this.map.get(key);
-    if (value === undefined) {
-      return undefined;
-    }
-    this.map.delete(key);
-    this.map.set(key, value);
-    return value;
-  }
-
-  set(key: string, value: V): void {
-    if (this.map.has(key)) {
-      this.map.delete(key);
-    }
-    this.map.set(key, value);
-    if (this.map.size <= this.capacity) {
-      return;
-    }
-    const oldestKey = this.map.keys().next().value as string | undefined;
-    if (oldestKey !== undefined) {
-      this.map.delete(oldestKey);
-    }
-  }
-}
-
 function optionsCacheKey(options?: ReadOptions): string {
   if (!options) {
     return "";
@@ -113,6 +84,31 @@ function optionsCacheKey(options?: ReadOptions): string {
   }
   const modePart = modeEntries.map(([counterId, modeId]) => `${counterId}:${modeId}`).join(",");
   return `${strictPart};${variantPart};${modePart}`;
+}
+
+function valueCacheKey(input: string, options?: ReadOptions): string {
+  if (!options) {
+    return input;
+  }
+  return `${input}\u0001${optionsCacheKey(options)}`;
+}
+
+function getCachedOrCompute<T>(
+  noOptionsCache: HotLruCache<T>,
+  withOptionsCache: HotLruCache<T>,
+  input: string,
+  options: ReadOptions | undefined,
+  compute: () => T
+): T {
+  const key = valueCacheKey(input, options);
+  const cache = options ? withOptionsCache : noOptionsCache;
+  const cached = cache.get(key);
+  if (cached !== undefined) {
+    return cached;
+  }
+  const value = compute();
+  cache.set(key, value);
+  return value;
 }
 
 function cloneReplaceResult(result: ReplaceResult): ReplaceResult {
@@ -598,17 +594,6 @@ function readNumberTextTokens(numberText: string, rules: RuleBundle, options?: R
   };
 }
 
-function normalizeTaiLeftTokens(tokens: string[]): string[] {
-  if (tokens.length === 0) {
-    return tokens;
-  }
-  const last = tokens[tokens.length - 1];
-  if (last !== "いち") {
-    return tokens;
-  }
-  return [...tokens.slice(0, -1), "いっ"];
-}
-
 function readTaiExpressionTokens(input: string, rules: RuleBundle, options?: ReadOptions) {
   const expr = detectTaiExpression(input);
   if (!expr) {
@@ -622,7 +607,7 @@ function readTaiExpressionTokens(input: string, rules: RuleBundle, options?: Rea
   if (!right) {
     return null;
   }
-  const tokens = [...normalizeTaiLeftTokens(left.tokens), "たい", ...right.tokens];
+  const tokens = [...normalizeIntegerTokensForDecimalPoint(left.tokens), "たい", ...right.tokens];
   return {
     number: `${left.normalized}対${right.normalized}`,
     tokens,
@@ -767,51 +752,19 @@ function toReading(input: string, rules: RuleBundle, options?: ReadOptions): Rea
 function createYomiJaWithRules(rules: RuleBundle): YomiJa {
   const replaceMarkers = collectReplaceMarkers(rules);
   const replaceMarkerIndex = buildReplaceMarkerIndex(replaceMarkers);
-  const readNoOptionsCache = new LruCache<string | null>(READ_CACHE_LIMIT);
-  const readWithOptionsCache = new LruCache<string | null>(READ_CACHE_LIMIT);
-  const replaceNoOptionsCache = new LruCache<string>(REPLACE_CACHE_LIMIT);
-  const replaceWithOptionsCache = new LruCache<string>(REPLACE_CACHE_LIMIT);
-  const replaceDetailedNoOptionsCache = new LruCache<ReplaceResult>(REPLACE_DETAILED_CACHE_LIMIT);
-  const replaceDetailedWithOptionsCache = new LruCache<ReplaceResult>(REPLACE_DETAILED_CACHE_LIMIT);
-  let readNoOptionsHot: { key: string; value: string | null } | undefined;
-  let readWithOptionsHot: { key: string; value: string | null } | undefined;
-  let replaceNoOptionsHot: { key: string; value: string } | undefined;
-  let replaceWithOptionsHot: { key: string; value: string } | undefined;
-  let replaceDetailedNoOptionsHot: { key: string; value: ReplaceResult } | undefined;
-  let replaceDetailedWithOptionsHot: { key: string; value: ReplaceResult } | undefined;
+  const readNoOptionsCache = new HotLruCache<string | null>(READ_CACHE_LIMIT);
+  const readWithOptionsCache = new HotLruCache<string | null>(READ_CACHE_LIMIT);
+  const replaceNoOptionsCache = new HotLruCache<string>(REPLACE_CACHE_LIMIT);
+  const replaceWithOptionsCache = new HotLruCache<string>(REPLACE_CACHE_LIMIT);
+  const replaceDetailedNoOptionsCache = new HotLruCache<ReplaceResult>(REPLACE_DETAILED_CACHE_LIMIT);
+  const replaceDetailedWithOptionsCache = new HotLruCache<ReplaceResult>(REPLACE_DETAILED_CACHE_LIMIT);
 
   return {
     read(input, options) {
-      if (!options) {
-        if (readNoOptionsHot?.key === input) {
-          return readNoOptionsHot.value;
-        }
-        const cached = readNoOptionsCache.get(input);
-        if (cached !== undefined) {
-          readNoOptionsHot = { key: input, value: cached };
-          return cached;
-        }
+      return getCachedOrCompute(readNoOptionsCache, readWithOptionsCache, input, options, () => {
         const result = toReading(input, rules, options);
-        const reading = result === null ? null : result.reading;
-        readNoOptionsCache.set(input, reading);
-        readNoOptionsHot = { key: input, value: reading };
-        return reading;
-      }
-
-      const cacheKey = `${input}\u0001${optionsCacheKey(options)}`;
-      if (readWithOptionsHot?.key === cacheKey) {
-        return readWithOptionsHot.value;
-      }
-      const cached = readWithOptionsCache.get(cacheKey);
-      if (cached !== undefined) {
-        readWithOptionsHot = { key: cacheKey, value: cached };
-        return cached;
-      }
-      const result = toReading(input, rules, options);
-      const reading = result === null ? null : result.reading;
-      readWithOptionsCache.set(cacheKey, reading);
-      readWithOptionsHot = { key: cacheKey, value: reading };
-      return reading;
+        return result === null ? null : result.reading;
+      });
     },
     readDetailed(input, options) {
       return toReading(input, rules, options);
@@ -820,63 +773,18 @@ function createYomiJaWithRules(rules: RuleBundle): YomiJa {
       return joinTokens(readNumberTokens(value, rules.core, options?.variant));
     },
     replaceInText(input, options) {
-      if (!options) {
-        if (replaceNoOptionsHot?.key === input) {
-          return replaceNoOptionsHot.value;
-        }
-        const cached = replaceNoOptionsCache.get(input);
-        if (cached !== undefined) {
-          replaceNoOptionsHot = { key: input, value: cached };
-          return cached;
-        }
-        const output = replaceInTextWithRules(input, rules, replaceMarkerIndex, options);
-        replaceNoOptionsCache.set(input, output);
-        replaceNoOptionsHot = { key: input, value: output };
-        return output;
-      }
-
-      const cacheKey = `${input}\u0001${optionsCacheKey(options)}`;
-      if (replaceWithOptionsHot?.key === cacheKey) {
-        return replaceWithOptionsHot.value;
-      }
-      const cached = replaceWithOptionsCache.get(cacheKey);
-      if (cached !== undefined) {
-        replaceWithOptionsHot = { key: cacheKey, value: cached };
-        return cached;
-      }
-      const output = replaceInTextWithRules(input, rules, replaceMarkerIndex, options);
-      replaceWithOptionsCache.set(cacheKey, output);
-      replaceWithOptionsHot = { key: cacheKey, value: output };
-      return output;
+      return getCachedOrCompute(replaceNoOptionsCache, replaceWithOptionsCache, input, options, () =>
+        replaceInTextWithRules(input, rules, replaceMarkerIndex, options)
+      );
     },
     replaceInTextDetailed(input, options) {
-      if (!options) {
-        if (replaceDetailedNoOptionsHot?.key === input) {
-          return cloneReplaceResult(replaceDetailedNoOptionsHot.value);
-        }
-        const cached = replaceDetailedNoOptionsCache.get(input);
-        if (cached !== undefined) {
-          replaceDetailedNoOptionsHot = { key: input, value: cached };
-          return cloneReplaceResult(cached);
-        }
-        const result = replaceInTextDetailedWithRules(input, rules, replaceMarkerIndex, options);
-        replaceDetailedNoOptionsCache.set(input, result);
-        replaceDetailedNoOptionsHot = { key: input, value: result };
-        return cloneReplaceResult(result);
-      }
-
-      const cacheKey = `${input}\u0001${optionsCacheKey(options)}`;
-      if (replaceDetailedWithOptionsHot?.key === cacheKey) {
-        return cloneReplaceResult(replaceDetailedWithOptionsHot.value);
-      }
-      const cached = replaceDetailedWithOptionsCache.get(cacheKey);
-      if (cached !== undefined) {
-        replaceDetailedWithOptionsHot = { key: cacheKey, value: cached };
-        return cloneReplaceResult(cached);
-      }
-      const result = replaceInTextDetailedWithRules(input, rules, replaceMarkerIndex, options);
-      replaceDetailedWithOptionsCache.set(cacheKey, result);
-      replaceDetailedWithOptionsHot = { key: cacheKey, value: result };
+      const result = getCachedOrCompute(
+        replaceDetailedNoOptionsCache,
+        replaceDetailedWithOptionsCache,
+        input,
+        options,
+        () => replaceInTextDetailedWithRules(input, rules, replaceMarkerIndex, options)
+      );
       return cloneReplaceResult(result);
     },
   };
