@@ -62,6 +62,7 @@ HAN_CHAR_RE = re.compile(r"[\u3400-\u4DBF\u4E00-\u9FFF\uF900-\uFAFF]")
 WHITESPACE_ONLY_RE = re.compile(r"^\s*$")
 READ_CACHE_LIMIT = 8_192
 REPLACE_CACHE_LIMIT = 2_048
+_CACHE_MISS = object()
 
 __all__ = [
     "YomiJaPy",
@@ -694,14 +695,6 @@ def read_number_text_tokens(
     }
 
 
-def normalize_tai_left_tokens(tokens: List[str]) -> List[str]:
-    if not tokens:
-        return tokens
-    if tokens[-1] != "いち":
-        return tokens
-    return list(tokens[:-1]) + ["いっ"]
-
-
 def read_tai_expression_tokens(
     input_text: str,
     core: Dict[str, Any],
@@ -721,7 +714,7 @@ def read_tai_expression_tokens(
     if right is None:
         return None
 
-    tokens = normalize_tai_left_tokens(left["tokens"]) + ["たい"] + list(right["tokens"])
+    tokens = normalize_integer_tokens_for_decimal_point(left["tokens"]) + ["たい"] + list(right["tokens"])
     return {
         "number": f"{left['normalized']}対{right['normalized']}",
         "tokens": tokens,
@@ -872,6 +865,33 @@ def resolve_counter_compose(
     return compose, mode_name
 
 
+class HotLruCache:
+    def __init__(self, limit: int) -> None:
+        self.limit = limit
+        self._lru: OrderedDict[str, Any] = OrderedDict()
+        self.hot_key: Optional[str] = None
+        self.hot_value: Any = None
+
+    def get_lru(self, key: str) -> Any:
+        value = self._lru.pop(key, _CACHE_MISS)
+        if value is _CACHE_MISS:
+            return _CACHE_MISS
+
+        self._lru[key] = value
+        self.hot_key = key
+        self.hot_value = value
+        return value
+
+    def set(self, key: str, value: Any) -> None:
+        if key in self._lru:
+            self._lru.pop(key)
+        self._lru[key] = value
+        self.hot_key = key
+        self.hot_value = value
+        if len(self._lru) > self.limit:
+            self._lru.popitem(last=False)
+
+
 class YomiJaPy:
     def __init__(self, rules: Optional[Dict[str, Any]] = None) -> None:
         self.rules = rules if rules is not None else load_rules()
@@ -882,57 +902,65 @@ class YomiJaPy:
         self.unit_by_pow10 = {int(entry["pow10"]): entry["reading"] for entry in self.core["bigUnits"]}
         self.replace_markers = collect_replace_markers(self.counter_defs)
         self.replace_marker_index, self.replace_marker_char_set = build_replace_marker_index(self.replace_markers)
-        self._read_cache_no_options: OrderedDict[str, Optional[str]] = OrderedDict()
-        self._read_cache_with_options: OrderedDict[str, Optional[str]] = OrderedDict()
-        self._replace_cache_no_options: OrderedDict[str, str] = OrderedDict()
-        self._replace_cache_with_options: OrderedDict[str, str] = OrderedDict()
-        self._read_hot_no_options: Optional[Tuple[str, Optional[str]]] = None
-        self._read_hot_with_options: Optional[Tuple[str, Optional[str]]] = None
-        self._replace_hot_no_options: Optional[Tuple[str, str]] = None
-        self._replace_hot_with_options: Optional[Tuple[str, str]] = None
+        self._read_cache_no_options = HotLruCache(READ_CACHE_LIMIT)
+        self._read_cache_with_options = HotLruCache(READ_CACHE_LIMIT)
+        self._replace_cache_no_options = HotLruCache(REPLACE_CACHE_LIMIT)
+        self._replace_cache_with_options = HotLruCache(REPLACE_CACHE_LIMIT)
 
     @staticmethod
-    def _cache_get(cache: OrderedDict[str, Any], key: str) -> Tuple[bool, Any]:
-        if key not in cache:
-            return False, None
-        value = cache.pop(key)
-        cache[key] = value
-        return True, value
+    def _apply_prefix_postfix(
+        tokens: List[str],
+        prefix: Optional[Tuple[str, List[str]]],
+        postfix: Optional[Tuple[str, List[str]]],
+    ) -> List[str]:
+        out = list(tokens)
+        if postfix:
+            out.extend(postfix[1])
+        if prefix:
+            out = list(prefix[1]) + out
+        return out
 
     @staticmethod
-    def _cache_set(cache: OrderedDict[str, Any], key: str, value: Any, limit: int) -> None:
-        if key in cache:
-            cache.pop(key)
-        cache[key] = value
-        if len(cache) <= limit:
-            return
-        cache.popitem(last=False)
+    def _build_read_result(
+        input_text: str,
+        normalized: str,
+        number: Any,
+        counter_id: Optional[str],
+        mode_used: Optional[str],
+        tokens: List[str],
+    ) -> Dict[str, Any]:
+        copied_tokens = list(tokens)
+        return {
+            "input": input_text,
+            "normalized": normalized,
+            "number": number,
+            "counterId": counter_id,
+            "modeUsed": mode_used,
+            "tokens": copied_tokens,
+            "reading": "".join(copied_tokens),
+        }
 
     def read(self, input_text: str, options: Optional[Dict[str, Any]] = None) -> Optional[str]:
         if options is None:
-            if self._read_hot_no_options is not None and self._read_hot_no_options[0] == input_text:
-                return self._read_hot_no_options[1]
-            hit, cached = self._cache_get(self._read_cache_no_options, input_text)
-            if hit:
-                self._read_hot_no_options = (input_text, cached)
+            if self._read_cache_no_options.hot_key == input_text:
+                return self._read_cache_no_options.hot_value
+            cached = self._read_cache_no_options.get_lru(input_text)
+            if cached is not _CACHE_MISS:
                 return cached
             result = self.read_detailed(input_text, options)
             reading = None if result is None else result["reading"]
-            self._cache_set(self._read_cache_no_options, input_text, reading, READ_CACHE_LIMIT)
-            self._read_hot_no_options = (input_text, reading)
+            self._read_cache_no_options.set(input_text, reading)
             return reading
 
         cache_key = f"{input_text}\x01{options_cache_key(options)}"
-        if self._read_hot_with_options is not None and self._read_hot_with_options[0] == cache_key:
-            return self._read_hot_with_options[1]
-        hit, cached = self._cache_get(self._read_cache_with_options, cache_key)
-        if hit:
-            self._read_hot_with_options = (cache_key, cached)
+        if self._read_cache_with_options.hot_key == cache_key:
+            return self._read_cache_with_options.hot_value
+        cached = self._read_cache_with_options.get_lru(cache_key)
+        if cached is not _CACHE_MISS:
             return cached
         result = self.read_detailed(input_text, options)
         reading = None if result is None else result["reading"]
-        self._cache_set(self._read_cache_with_options, cache_key, reading, READ_CACHE_LIMIT)
-        self._read_hot_with_options = (cache_key, reading)
+        self._read_cache_with_options.set(cache_key, reading)
         return reading
 
     def read_number(self, value: int, options: Optional[Dict[str, Any]] = None) -> str:
@@ -971,21 +999,26 @@ class YomiJaPy:
 
     def replace_in_text(self, input_text: str, options: Optional[Dict[str, Any]] = None) -> str:
         if options is None:
-            if self._replace_hot_no_options is not None and self._replace_hot_no_options[0] == input_text:
-                return self._replace_hot_no_options[1]
-            hit, cached = self._cache_get(self._replace_cache_no_options, input_text)
-            if hit:
-                self._replace_hot_no_options = (input_text, cached)
+            if self._replace_cache_no_options.hot_key == input_text:
+                return self._replace_cache_no_options.hot_value
+            cached = self._replace_cache_no_options.get_lru(input_text)
+            if cached is not _CACHE_MISS:
                 return cached
-        else:
-            cache_key = f"{input_text}\x01{options_cache_key(options)}"
-            if self._replace_hot_with_options is not None and self._replace_hot_with_options[0] == cache_key:
-                return self._replace_hot_with_options[1]
-            hit, cached = self._cache_get(self._replace_cache_with_options, cache_key)
-            if hit:
-                self._replace_hot_with_options = (cache_key, cached)
-                return cached
+            output = self._replace_in_text_uncached(input_text, options)
+            self._replace_cache_no_options.set(input_text, output)
+            return output
 
+        cache_key = f"{input_text}\x01{options_cache_key(options)}"
+        if self._replace_cache_with_options.hot_key == cache_key:
+            return self._replace_cache_with_options.hot_value
+        cached = self._replace_cache_with_options.get_lru(cache_key)
+        if cached is not _CACHE_MISS:
+            return cached
+        output = self._replace_in_text_uncached(input_text, options)
+        self._replace_cache_with_options.set(cache_key, output)
+        return output
+
+    def _replace_in_text_uncached(self, input_text: str, options: Optional[Dict[str, Any]]) -> str:
         if input_text == "":
             return input_text
 
@@ -1054,42 +1087,105 @@ class YomiJaPy:
             out.append(ch)
             index += 1
 
-        output = "".join(out)
-        if options is None:
-            self._cache_set(self._replace_cache_no_options, input_text, output, REPLACE_CACHE_LIMIT)
-            self._replace_hot_no_options = (input_text, output)
-        else:
-            self._cache_set(self._replace_cache_with_options, cache_key, output, REPLACE_CACHE_LIMIT)
-            self._replace_hot_with_options = (cache_key, output)
-        return output
+        return "".join(out)
+
+    def _read_decimal_detailed(
+        self,
+        input_text: str,
+        normalized: str,
+        number_text: str,
+        detected: Optional[Dict[str, str]],
+        prefix: Optional[Tuple[str, List[str]]],
+        postfix: Optional[Tuple[str, List[str]]],
+        options: Optional[Dict[str, Any]],
+        strict: bool,
+    ) -> Optional[Dict[str, Any]]:
+        decimal = parse_decimal(number_text)
+        if decimal is None:
+            return None
+
+        tokens = read_decimal_tokens(
+            decimal["sign"],
+            decimal["integerPart"],
+            decimal["fractionDigits"],
+            self.core,
+            options,
+            self.unit_by_pow10,
+        )
+        mode_used: Optional[str] = None
+        counter_id: Optional[str] = None
+
+        if detected:
+            counter_id = detected["counterId"]
+            compose, mode_used = resolve_counter_compose(self.counter_defs, counter_id, options)
+            if isinstance(compose, dict):
+                decimal_suffix = resolve_decimal_compose_suffix(compose, self.pattern_defs)
+                if decimal_suffix is None:
+                    if strict:
+                        raise ValueError(f"Decimal values with counter '{counter_id}' are not supported")
+                    return None
+                tokens = list(tokens) + list(decimal_suffix)
+
+        tokens = self._apply_prefix_postfix(tokens, prefix, postfix)
+        return self._build_read_result(
+            input_text,
+            normalized,
+            decimal["normalized"],
+            counter_id,
+            mode_used,
+            tokens,
+        )
+
+    def _read_integer_detailed(
+        self,
+        input_text: str,
+        normalized: str,
+        number_text: str,
+        detected: Optional[Dict[str, str]],
+        prefix: Optional[Tuple[str, List[str]]],
+        postfix: Optional[Tuple[str, List[str]]],
+        options: Optional[Dict[str, Any]],
+        strict: bool,
+    ) -> Optional[Dict[str, Any]]:
+        number_value = parse_number(number_text)
+        if number_value is None:
+            if strict:
+                raise ValueError(f"Unable to parse number from input: {input_text}")
+            return None
+
+        base_tokens = read_number_tokens(number_value, self.core, options, self.unit_by_pow10)
+        mode_used: Optional[str] = None
+        counter_id: Optional[str] = None
+        if detected:
+            counter_id = detected["counterId"]
+            base_tokens, mode_used = apply_counter(
+                self.counter_defs,
+                self.pattern_defs,
+                counter_id,
+                number_value,
+                base_tokens,
+                options,
+            )
+
+        tokens = self._apply_prefix_postfix(base_tokens, prefix, postfix)
+        return self._build_read_result(
+            input_text,
+            normalized,
+            number_value,
+            counter_id,
+            mode_used,
+            tokens,
+        )
 
     def read_detailed(self, input_text: str, options: Optional[Dict[str, Any]] = None) -> Optional[Dict[str, Any]]:
         normalized = normalize_input(input_text)
         tai = read_tai_expression_tokens(normalized, self.core, options, self.unit_by_pow10)
         if tai is not None:
-            tokens = list(tai["tokens"])
-            return {
-                "input": input_text,
-                "normalized": normalized,
-                "number": tai["number"],
-                "counterId": None,
-                "modeUsed": None,
-                "tokens": tokens,
-                "reading": "".join(tokens),
-            }
+            return self._build_read_result(input_text, normalized, tai["number"], None, None, tai["tokens"])
 
         month_day = self._read_month_day_expression_tokens(normalized, options)
         if month_day is not None:
-            tokens = list(month_day["tokens"])
-            return {
-                "input": input_text,
-                "normalized": normalized,
-                "number": month_day["number"],
-                "counterId": None,
-                "modeUsed": None,
-                "tokens": tokens,
-                "reading": "".join(tokens),
-            }
+            return self._build_read_result(input_text, normalized, month_day["number"], None, None, month_day["tokens"])
 
         prefix = None
         postfix = None
@@ -1112,86 +1208,29 @@ class YomiJaPy:
         number_text = detected["numberPart"] if detected else counter_input
         strict = bool(options.get("strict")) if isinstance(options, dict) else False
 
-        decimal = parse_decimal(number_text)
-        if decimal is not None:
-            base_tokens = read_decimal_tokens(
-                decimal["sign"],
-                decimal["integerPart"],
-                decimal["fractionDigits"],
-                self.core,
-                options,
-                self.unit_by_pow10,
-            )
+        decimal_result = self._read_decimal_detailed(
+            input_text,
+            normalized,
+            number_text,
+            detected,
+            prefix,
+            postfix,
+            options,
+            strict,
+        )
+        if decimal_result is not None:
+            return decimal_result
 
-            if detected:
-                compose, mode_used = resolve_counter_compose(self.counter_defs, detected["counterId"], options)
-                counter_id = detected["counterId"]
-                if isinstance(compose, dict):
-                    decimal_suffix = resolve_decimal_compose_suffix(compose, self.pattern_defs)
-                    if decimal_suffix is None:
-                        if strict:
-                            raise ValueError(f"Decimal values with counter '{counter_id}' are not supported")
-                        return None
-                    tokens = list(base_tokens) + list(decimal_suffix)
-                else:
-                    tokens = base_tokens
-            else:
-                tokens = base_tokens
-                mode_used = None
-                counter_id = None
-
-            if postfix:
-                tokens = list(tokens) + list(postfix[1])
-            if prefix:
-                tokens = list(prefix[1]) + list(tokens)
-
-            return {
-                "input": input_text,
-                "normalized": normalized,
-                "number": decimal["normalized"],
-                "counterId": counter_id,
-                "modeUsed": mode_used,
-                "tokens": tokens,
-                "reading": "".join(tokens),
-            }
-
-        number_value = parse_number(number_text)
-        if number_value is None:
-            if strict:
-                raise ValueError(f"Unable to parse number from input: {input_text}")
-            return None
-
-        base_tokens = read_number_tokens(number_value, self.core, options, self.unit_by_pow10)
-
-        if detected:
-            tokens, mode_used = apply_counter(
-                self.counter_defs,
-                self.pattern_defs,
-                detected["counterId"],
-                number_value,
-                base_tokens,
-                options,
-            )
-            counter_id = detected["counterId"]
-        else:
-            tokens = base_tokens
-            mode_used = None
-            counter_id = None
-
-        if postfix:
-            tokens = list(tokens) + list(postfix[1])
-        if prefix:
-            tokens = list(prefix[1]) + list(tokens)
-
-        return {
-            "input": input_text,
-            "normalized": normalized,
-            "number": number_value,
-            "counterId": counter_id,
-            "modeUsed": mode_used,
-            "tokens": tokens,
-            "reading": "".join(tokens),
-        }
+        return self._read_integer_detailed(
+            input_text,
+            normalized,
+            number_text,
+            detected,
+            prefix,
+            postfix,
+            options,
+            strict,
+        )
 
 
 _DEFAULT_YOMI: Optional[YomiJaPy] = None
@@ -1280,6 +1319,21 @@ def parse_modes(mode_args: List[str]) -> Dict[str, str]:
     return out
 
 
+def build_cli_read_options(
+    zero: Optional[str],
+    modes: Dict[str, str],
+    strict: bool,
+) -> Optional[Dict[str, Any]]:
+    options: Dict[str, Any] = {}
+    if zero is not None:
+        options["variant"] = {"zero": zero}
+    if modes:
+        options["mode"] = modes
+    if strict:
+        options["strict"] = True
+    return options or None
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Python implementation for num-yomi")
     subparsers = parser.add_subparsers(dest="command", required=True)
@@ -1304,32 +1358,20 @@ def main() -> None:
     yomi = YomiJaPy()
 
     if args.command == "read":
-        options: Dict[str, Any] = {}
-        if args.zero is not None:
-            options["variant"] = {"zero": args.zero}
         modes = parse_modes(args.mode)
-        if modes:
-            options["mode"] = modes
-        if args.strict:
-            options["strict"] = True
+        options = build_cli_read_options(args.zero, modes, args.strict)
 
-        result = yomi.read(args.input, options or None)
+        result = yomi.read(args.input, options)
         if result is None:
             raise SystemExit("Unable to parse")
         print(result)
         return
 
     if args.command == "replace":
-        options: Dict[str, Any] = {}
-        if args.zero is not None:
-            options["variant"] = {"zero": args.zero}
         modes = parse_modes(args.mode)
-        if modes:
-            options["mode"] = modes
-        if args.strict:
-            options["strict"] = True
+        options = build_cli_read_options(args.zero, modes, args.strict)
 
-        print(yomi.replace_in_text(args.input, options or None))
+        print(yomi.replace_in_text(args.input, options))
         return
 
     if args.command == "bench":
