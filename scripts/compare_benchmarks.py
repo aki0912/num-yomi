@@ -121,7 +121,7 @@ def main() -> None:
         ]
 
         py_cmd = [
-            "python3",
+            sys.executable,
             "bench/bench_python_replace_call.py",
             "--cases",
             cases_path,
@@ -155,7 +155,7 @@ def main() -> None:
         ]
 
         py_cmd = [
-            "python3",
+            sys.executable,
             "bench/bench_python_call.py",
             "--cases",
             cases_path,
@@ -189,7 +189,7 @@ def main() -> None:
         ]
 
         py_cmd = [
-            "python3",
+            sys.executable,
             "python_impl/num_yomi.py",
             "bench",
             "--cases",

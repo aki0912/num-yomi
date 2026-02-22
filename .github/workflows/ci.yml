@@ -26,14 +26,17 @@ jobs:
           node-version: "22"
           cache: "pnpm"
 
+      - name: Setup uv
+        uses: astral-sh/setup-uv@v5
+
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Install Python lint tools
-        run: python3 -m pip install --upgrade pip ruff
+      - name: Sync Python dependencies
+        run: uv sync --frozen --group dev
 
       - name: Run linters
         run: pnpm lint
@@ -42,10 +45,10 @@ jobs:
         run: pnpm test
 
       - name: Verify Python parity (read)
-        run: python3 bench/bench_python_call.py --cases test/cases.json --iterations 1 > /dev/null
+        run: uv run --frozen python bench/bench_python_call.py --cases test/cases.json --iterations 1 > /dev/null
 
       - name: Verify Python parity (replace)
-        run: python3 bench/bench_python_replace_call.py --cases test/replace_cases.json --iterations 1 > /dev/null
+        run: uv run --frozen python bench/bench_python_replace_call.py --cases test/replace_cases.json --iterations 1 > /dev/null
 
       - name: Verify Rust parity (read)
         run: cargo run --quiet --manifest-path rust_impl/Cargo.toml --bin bench_call -- --cases test/cases.json --iterations 1 > /dev/null
@@ -54,4 +57,4 @@ jobs:
         run: cargo run --quiet --manifest-path rust_impl/Cargo.toml --bin bench_replace_call -- --cases test/replace_cases.json --iterations 1 > /dev/null
 
       - name: Verify sample.txt benchmark runners
-        run: python3 scripts/compare_sample_benchmark.py --input test/sample.txt --expected test/sample.expected.txt --iterations 1 > /dev/null
+        run: uv run --frozen python scripts/compare_sample_benchmark.py --input test/sample.txt --expected test/sample.expected.txt --iterations 1 > /dev/null

@@ -72,7 +72,7 @@ def main() -> None:
         variant_count_text,
     ]
     py_cmd = [
-        "python3",
+        sys.executable,
         "bench/bench_python_sample_replace_call.py",
         "--input",
         input_path,

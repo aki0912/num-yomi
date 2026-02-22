@@ -8,6 +8,7 @@ import pathlib
 import re
 import statistics
 import subprocess
+import sys
 from typing import Sequence
 
 TOTAL_LINE_RE = re.compile(r"^-\s*(node|python|rust):\s*([0-9]+(?:\.[0-9]+)?)\s*$")
@@ -160,7 +161,7 @@ def main() -> None:
     readme_path = pathlib.Path(args.readme)
 
     read_command = [
-        "python3",
+        sys.executable,
         "scripts/compare_benchmarks.py",
         "--call-style",
         "--cases",
@@ -169,7 +170,7 @@ def main() -> None:
         str(args.iterations),
     ]
     replace_command = [
-        "python3",
+        sys.executable,
         "scripts/compare_benchmarks.py",
         "--call-style",
         "--replace-style",
@@ -179,7 +180,7 @@ def main() -> None:
         str(args.iterations),
     ]
     sample_replace_command = [
-        "python3",
+        sys.executable,
         "scripts/compare_sample_benchmark.py",
         "--input",
         "test/sample.txt",

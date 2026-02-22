@@ -23,6 +23,7 @@ yarn-error.log*
 # Python
 __pycache__/
 *.pyc
+.venv/
 
 # Rust
 rust_impl/target/

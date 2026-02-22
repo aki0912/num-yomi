@@ -29,11 +29,13 @@
 
 - Node.js `>= 20`
 - pnpm
+- uv
 
 ## セットアップ
 
 ```bash
 pnpm install
+uv sync --frozen --group dev
 pnpm build
 pnpm test
 ```
@@ -42,7 +44,11 @@ pnpm test
 
 ## Lint
 
-Python の lint は `ruff` を使います（未インストールの場合は `python3 -m pip install ruff`）。
+Python の依存は `uv` で管理します。初回は以下を実行してください。
+
+```bash
+uv sync --frozen --group dev
+```
 
 ```bash
 pnpm lint
@@ -406,7 +412,7 @@ fn main() {
 単発実行例:
 
 ```bash
-python3 python_impl/num_yomi.py read \"300円\"
+uv run --frozen python python_impl/num_yomi.py read \"300円\"
 cargo run --manifest-path rust_impl/Cargo.toml -- replace \"今日は第3版を1.2本買った\"
 cargo run --manifest-path rust_impl/Cargo.toml -- read \"300円\"
 ```
@@ -432,7 +438,7 @@ pnpm bench:compare:sample:replace
 反復回数を変更する例:
 
 ```bash
-python3 scripts/compare_benchmarks.py --cases test/cases.json --iterations 5000
+uv run --frozen python scripts/compare_benchmarks.py --cases test/cases.json --iterations 5000
 ```
 
 個別ベンチ:
@@ -464,17 +470,17 @@ pnpm bench:update-readme
 直近計測結果（2026-02-22, `--iterations 20000`, sample `--iterations 2000`, 5回計測レンジ）:
 
 - `pnpm bench:compare`（call-style）
-  - Node: `49.094 - 57.059 ms`（平均 `52.524 ms`）
-  - Python: `338.111 - 344.185 ms`（平均 `340.221 ms`）
-  - Rust: `21.211 - 36.409 ms`（平均 `31.432 ms`）
+  - Node: `48.633 - 56.537 ms`（平均 `53.326 ms`）
+  - Python: `324.729 - 337.751 ms`（平均 `329.792 ms`）
+  - Rust: `30.660 - 35.996 ms`（平均 `32.990 ms`）
 - `pnpm bench:compare:replace`
-  - Node: `19.206 - 22.293 ms`（平均 `20.751 ms`）
-  - Python: `78.042 - 79.801 ms`（平均 `78.663 ms`）
-  - Rust: `5.417 - 8.584 ms`（平均 `7.310 ms`）
+  - Node: `19.255 - 22.970 ms`（平均 `21.414 ms`）
+  - Python: `75.151 - 77.048 ms`（平均 `76.215 ms`）
+  - Rust: `7.595 - 8.854 ms`（平均 `8.226 ms`）
 - `pnpm bench:compare:sample:replace`
-  - Node: `349.897 - 364.121 ms`（平均 `358.270 ms`）
-  - Python: `1489.221 - 1515.465 ms`（平均 `1505.237 ms`）
-  - Rust: `105.812 - 111.406 ms`（平均 `108.284 ms`）
+  - Node: `338.930 - 354.956 ms`（平均 `348.389 ms`）
+  - Python: `1436.611 - 1459.381 ms`（平均 `1452.181 ms`）
+  - Rust: `102.720 - 109.982 ms`（平均 `106.164 ms`）
 
 注: ベンチ結果はマシン負荷や実行タイミングで多少ぶれます。
 

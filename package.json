@@ -18,12 +18,12 @@
     "replace-num-yomi": "dist/cli/replace-num-yomi.js"
   },
   "scripts": {
-    "generate:rules": "python3 scripts/generate_rules_artifacts.py",
+    "generate:rules": "uv run --frozen python scripts/generate_rules_artifacts.py",
     "prebuild": "pnpm generate:rules",
     "build": "tsc",
     "lint": "pnpm lint:node && pnpm lint:python && pnpm lint:rust",
     "lint:node": "biome lint --files-ignore-unknown=true src/index.ts src/core src/counters src/rules src/cli scripts/run-cases.js bench/*.mjs",
-    "lint:python": "python3 -m ruff check python_impl bench scripts",
+    "lint:python": "uv run --frozen --group dev ruff check python_impl bench scripts",
     "lint:rust": "cargo fmt --manifest-path rust_impl/Cargo.toml -- --check && cargo clippy --manifest-path rust_impl/Cargo.toml --all-targets",
     "num-yomi": "node dist/cli/num-yomi.js",
     "replace-num-yomi": "node dist/cli/replace-num-yomi.js",
@@ -34,18 +34,18 @@
     "bench:node:call": "node bench/bench_node_call.mjs --cases test/cases.json --iterations 20000",
     "bench:node:replace:call": "node bench/bench_node_replace_call.mjs --cases test/replace_cases.json --iterations 20000",
     "bench:node:sample:replace:call": "node bench/bench_node_sample_replace_call.mjs --input test/sample.txt --expected test/sample.expected.txt --iterations 2000",
-    "bench:python": "python3 python_impl/num_yomi.py bench --cases test/cases.json --iterations 20000",
-    "bench:python:call": "python3 bench/bench_python_call.py --cases test/cases.json --iterations 20000",
-    "bench:python:replace:call": "python3 bench/bench_python_replace_call.py --cases test/replace_cases.json --iterations 20000",
-    "bench:python:sample:replace:call": "python3 bench/bench_python_sample_replace_call.py --input test/sample.txt --expected test/sample.expected.txt --iterations 2000",
+    "bench:python": "uv run --frozen python python_impl/num_yomi.py bench --cases test/cases.json --iterations 20000",
+    "bench:python:call": "uv run --frozen python bench/bench_python_call.py --cases test/cases.json --iterations 20000",
+    "bench:python:replace:call": "uv run --frozen python bench/bench_python_replace_call.py --cases test/replace_cases.json --iterations 20000",
+    "bench:python:sample:replace:call": "uv run --frozen python bench/bench_python_sample_replace_call.py --input test/sample.txt --expected test/sample.expected.txt --iterations 2000",
     "bench:rust": "cargo run --quiet --release --manifest-path rust_impl/Cargo.toml --bin num-yomi-rust -- bench --cases test/cases.json --iterations 20000",
     "bench:rust:call": "cargo run --quiet --release --manifest-path rust_impl/Cargo.toml --bin bench_call -- --cases test/cases.json --iterations 20000",
     "bench:rust:replace:call": "cargo run --quiet --release --manifest-path rust_impl/Cargo.toml --bin bench_replace_call -- --cases test/replace_cases.json --iterations 20000",
     "bench:rust:sample:replace:call": "cargo run --quiet --release --manifest-path rust_impl/Cargo.toml --bin bench_sample_replace_call -- --input test/sample.txt --expected test/sample.expected.txt --iterations 2000",
-    "bench:compare": "python3 scripts/compare_benchmarks.py --call-style --cases test/cases.json --iterations 20000",
-    "bench:compare:replace": "python3 scripts/compare_benchmarks.py --call-style --replace-style --cases test/replace_cases.json --iterations 20000",
-    "bench:compare:sample:replace": "python3 scripts/compare_sample_benchmark.py --input test/sample.txt --expected test/sample.expected.txt --iterations 2000",
-    "bench:update-readme": "python3 scripts/update_readme_benchmarks.py --runs 5 --iterations 20000 --sample-iterations 2000"
+    "bench:compare": "uv run --frozen python scripts/compare_benchmarks.py --call-style --cases test/cases.json --iterations 20000",
+    "bench:compare:replace": "uv run --frozen python scripts/compare_benchmarks.py --call-style --replace-style --cases test/replace_cases.json --iterations 20000",
+    "bench:compare:sample:replace": "uv run --frozen python scripts/compare_sample_benchmark.py --input test/sample.txt --expected test/sample.expected.txt --iterations 2000",
+    "bench:update-readme": "uv run --frozen python scripts/update_readme_benchmarks.py --runs 5 --iterations 20000 --sample-iterations 2000"
   },
   "engines": {
     "node": ">=20"
