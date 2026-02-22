@@ -461,20 +461,20 @@ pnpm bench:update-readme
 - Rust: `rustc 1.92.0`, `cargo 1.92.0`
 - OS: `Darwin 25.3.0 (arm64, Apple Silicon)`
 
-直近計測結果（2026-02-21, `--iterations 20000`, sample `--iterations 2000`, 5回計測レンジ）:
+直近計測結果（2026-02-22, `--iterations 20000`, sample `--iterations 2000`, 5回計測レンジ）:
 
 - `pnpm bench:compare`（call-style）
-  - Node: `38.794 - 43.311 ms`（平均 `40.300 ms`）
-  - Python: `370.441 - 375.607 ms`（平均 `371.871 ms`）
-  - Rust: `27.724 - 33.282 ms`（平均 `31.369 ms`）
+  - Node: `38.463 - 41.044 ms`（平均 `39.499 ms`）
+  - Python: `348.503 - 366.067 ms`（平均 `355.567 ms`）
+  - Rust: `23.046 - 34.027 ms`（平均 `29.733 ms`）
 - `pnpm bench:compare:replace`
-  - Node: `14.610 - 16.028 ms`（平均 `15.056 ms`）
-  - Python: `85.285 - 89.067 ms`（平均 `87.153 ms`）
-  - Rust: `7.494 - 8.495 ms`（平均 `7.975 ms`）
+  - Node: `14.694 - 15.364 ms`（平均 `14.924 ms`）
+  - Python: `81.630 - 85.167 ms`（平均 `83.552 ms`）
+  - Rust: `4.495 - 8.796 ms`（平均 `6.933 ms`）
 - `pnpm bench:compare:sample:replace`
-  - Node: `343.154 - 359.834 ms`（平均 `353.024 ms`）
-  - Python: `1447.626 - 1491.459 ms`（平均 `1463.760 ms`）
-  - Rust: `104.742 - 109.245 ms`（平均 `106.624 ms`）
+  - Node: `333.318 - 357.030 ms`（平均 `344.972 ms`）
+  - Python: `1393.193 - 1425.088 ms`（平均 `1411.367 ms`）
+  - Rust: `103.406 - 106.996 ms`（平均 `105.647 ms`）
 
 注: ベンチ結果はマシン負荷や実行タイミングで多少ぶれます。
 

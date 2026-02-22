@@ -113,7 +113,7 @@ fn run() -> Result<(), String> {
             "variant_count": variant_count,
             "input_path": input_path.display().to_string(),
             "expected_path": expected_path.display().to_string(),
-            "input_bytes": variant_inputs[0].as_bytes().len(),
+            "input_bytes": variant_inputs[0].len(),
             "avg_ns": (elapsed_ns / iterations as u128) as u64,
             "total_ns": elapsed_ns as u64,
             "total_ms": (elapsed_ns as f64) / 1_000_000.0,

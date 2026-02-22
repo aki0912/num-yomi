@@ -5,6 +5,7 @@ use num_traits::{Signed, ToPrimitive, Zero};
 use serde_json::Value;
 use smallvec::{smallvec, SmallVec};
 use std::cell::RefCell;
+use std::cmp::Reverse;
 use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, OnceLock};
 use unicode_normalization::UnicodeNormalization;
@@ -287,9 +288,11 @@ struct ReplaceMarkerIndex {
 static RUNTIME_RULES: OnceLock<RuntimeRules> = OnceLock::new();
 static REPLACE_MARKERS: OnceLock<Vec<&'static str>> = OnceLock::new();
 static REPLACE_MARKER_INDEX: OnceLock<ReplaceMarkerIndex> = OnceLock::new();
+type ReadLastCacheEntry = (usize, String, Option<Arc<str>>);
+type ReplaceLastCacheEntry = (usize, String, Arc<str>);
 thread_local! {
-    static READ_LAST_CACHE: RefCell<Option<(usize, String, Option<Arc<str>>)>> = const { RefCell::new(None) };
-    static REPLACE_LAST_CACHE: RefCell<Option<(usize, String, Arc<str>)>> = const { RefCell::new(None) };
+    static READ_LAST_CACHE: RefCell<Option<ReadLastCacheEntry>> = const { RefCell::new(None) };
+    static REPLACE_LAST_CACHE: RefCell<Option<ReplaceLastCacheEntry>> = const { RefCell::new(None) };
 }
 
 fn runtime_rules() -> &'static RuntimeRules {
@@ -324,10 +327,10 @@ fn runtime_rules() -> &'static RuntimeRules {
         }
 
         for markers in prefix_markers_by_head.values_mut() {
-            markers.sort_by(|a, b| b.marker.len().cmp(&a.marker.len()));
+            markers.sort_by_key(|m| Reverse(m.marker.len()));
         }
         for markers in suffix_markers_by_tail.values_mut() {
-            markers.sort_by(|a, b| b.marker.len().cmp(&a.marker.len()));
+            markers.sort_by_key(|m| Reverse(m.marker.len()));
         }
 
         RuntimeRules {
@@ -366,7 +369,7 @@ fn replace_markers() -> &'static Vec<&'static str> {
                 markers.push(postfix.marker);
             }
         }
-        markers.sort_by(|a, b| b.len().cmp(&a.len()));
+        markers.sort_by_key(|m| Reverse(m.len()));
         markers
     })
 }
@@ -386,7 +389,7 @@ fn replace_marker_index() -> &'static ReplaceMarkerIndex {
             }
         }
         for entries in by_first_char.values_mut() {
-            entries.sort_by(|a, b| b.len().cmp(&a.len()));
+            entries.sort_by_key(|m| Reverse(m.len()));
         }
 
         ReplaceMarkerIndex {
@@ -597,12 +600,11 @@ fn replace_in_text_with_options(
             if !contains_numeric_char(fragment) {
                 continue;
             }
-            if !contains_marker(fragment, marker_index) {
-                if !should_convert_bare_number_fragment(input, start_byte, end_byte, fragment)
-                    && !is_tai_expression_fragment(fragment)
-                {
-                    continue;
-                }
+            if !contains_marker(fragment, marker_index)
+                && !should_convert_bare_number_fragment(input, start_byte, end_byte, fragment)
+                && !is_tai_expression_fragment(fragment)
+            {
+                continue;
             }
 
             if let Ok(Some(reading)) =
@@ -650,10 +652,10 @@ fn detect_counter<'a>(input: &'a str, rules: &RuntimeRules) -> Option<CounterMat
     if let Some(head) = input.chars().next() {
         if let Some(candidates) = rules.prefix_markers_by_head.get(&head) {
             for marker in candidates {
-                if input.starts_with(marker.marker) {
+                if let Some(number_part) = input.strip_prefix(marker.marker) {
                     return Some(CounterMatch {
                         counter: marker.counter,
-                        number_part: &input[marker.marker.len()..],
+                        number_part,
                     });
                 }
             }
@@ -1814,7 +1816,7 @@ fn apply_tail_pattern(pattern: &PatternDef, tokens: &TokenBuf) -> (TokenBuf, &'s
 
     let tail = tokens[tokens.len() - 1];
     for rule in pattern.rules {
-        if !rule.when_tail_in.iter().any(|t| *t == tail) {
+        if !rule.when_tail_in.contains(&tail) {
             continue;
         }
 
@@ -2020,9 +2022,7 @@ fn config_ptr_key(config: Option<&ReadConfig>) -> usize {
 fn read_last_cache_get_shared(config_key: usize, input: &str) -> Option<Option<Arc<str>>> {
     READ_LAST_CACHE.with(|cache| {
         let borrowed = cache.borrow();
-        let Some((cached_key, cached_input, cached_output)) = borrowed.as_ref() else {
-            return None;
-        };
+        let (cached_key, cached_input, cached_output) = borrowed.as_ref()?;
         if *cached_key != config_key || cached_input != input {
             return None;
         }
@@ -2039,9 +2039,7 @@ fn read_last_cache_set_shared(config_key: usize, input: &str, output: &Option<Ar
 fn replace_last_cache_get_shared(config_key: usize, input: &str) -> Option<Arc<str>> {
     REPLACE_LAST_CACHE.with(|cache| {
         let borrowed = cache.borrow();
-        let Some((cached_key, cached_input, cached_output)) = borrowed.as_ref() else {
-            return None;
-        };
+        let (cached_key, cached_input, cached_output) = borrowed.as_ref()?;
         if *cached_key != config_key || cached_input != input {
             return None;
         }
